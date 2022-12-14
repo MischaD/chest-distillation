@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="Always" serverName="hetep fobadiffusion" remoteFilesAllowedToDisappearOnAutoupload="false" confirmBeforeUploading="false">
+    <option name="confirmBeforeUploading" value="false" />
+    <serverData>
+      <paths name="alex">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/saturn/iwai/iwai003h/pycharm/foba" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="hetep">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/vol/ideadata/ed52egek/pycharm/fobadiffusion" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="hetep (1)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/vol/ideadata/ed52egek/pycharm/fobadiffusion" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="hetep (2)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/vol/ideadata/ed52egek/pycharm/fobadiffusion" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="hetep (3)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/vol/ideadata/ed52egek/pycharm/fobadiffusion" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="hetep (4)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/vol/ideadata/ed52egek/pycharm/fobadiffusion" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="hetep fobadiffusion">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/vol/ideadata/ed52egek/pycharm/foba" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="sethos">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/vol/ideadata/ed52egek/pycharm/foba" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="sethos (3)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/vol/ideadata/ed52egek/pycharm/fobadiffusion" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="sethos (5)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/vol/ideadata/ed52egek/pycharm/foba" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="sethos (6)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/vol/ideadata/ed52egek/pycharm/foba" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="sethos (7)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/vol/ideadata/ed52egek/pycharm/foba" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="sethos (8)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/vol/ideadata/ed52egek/pycharm/foba" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="sethos (9)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/vol/ideadata/ed52egek/pycharm/foba" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="sethos-foba">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/vol/ideadata/ed52egek/pycharm/foba" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="woody fobadiffusion">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/saturn/iwai/iwai003h/pycharm/foba" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
+  </component>
+</project>

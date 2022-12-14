@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/MCG_diffusion" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/finetune-stable-diffusion" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/stable-diffusion" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/stable-diffusion2" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/stable-foba-diffusion" vcs="Git" />
+  </component>
+</project>

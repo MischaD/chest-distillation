@@ -1,0 +1,6 @@
+[submodule "stable-diffusion"]
+	path = stable-diffusion
+	url = git@github.com:MischaD/stable-diffusion.git
+[submodule "finetune-stable-diffusion"]
+	path = finetune-stable-diffusion
+	url = git@github.com:HReynaud/finetune-stable-diffusion.git
