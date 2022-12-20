@@ -9,16 +9,26 @@ rev_diff_steps = 40
 num_repeat_each_diffusion_step = 1
 
 prompt = "final report examination chest mass"
-goal_prompt = "car" # object we want to detect
-foreground_prompt = "a photo of a car"
-background_prompt = "a photo of a background"
-attention_extractor = AttentionExtractor("relevant_token_step_mean", tok_idx=5, steps=40)
+foreground_prompt = "final report examination chest mass"
+background_prompt = "final report examination no finding"
+attention_extractor = AttentionExtractor("multi_relevant_token_step_mean", tok_idx=[4,5], steps=40)
 latent_attention_masks = True
 
 dataset = "chestxray"
-dataset_args = dict(
+dataset_args = dict() # will be overwritten during execution to contain our split
+dataset_args_train = dict(
     base_dir=base_dir,
     split=DatasetSplit("train"),
+    limit_dataset=[0, 10],
+)
+dataset_args_val = dict(
+    base_dir=base_dir,
+    split=DatasetSplit("val"),
+    limit_dataset=[0, 10],
+)
+dataset_args_test = dict(
+    base_dir=base_dir,
+    split=DatasetSplit("test"),
     limit_dataset=[0, 10],
 )
 
