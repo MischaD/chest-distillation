@@ -16,9 +16,9 @@ import torch
 from webdataset.handlers import warn_and_continue
 
 
-from ldm.util import instantiate_from_config
-from ldm.data.inpainting.synthetic_mask import gen_large_mask, MASK_MODES
-from ldm.data.base import PRNGMixin
+from src.ldm.util import instantiate_from_config
+from src.ldm.data.inpainting.synthetic_mask import gen_large_mask, MASK_MODES
+from src.ldm.data.base import PRNGMixin
 
 
 class DataWithWings(torch.utils.data.IterableDataset):
@@ -218,7 +218,7 @@ class WebDataModuleFromConfig(pl.LightningDataModule):
         return self.make_loader(self.test, train=False)
 
 
-from ldm.modules.image_degradation import degradation_fn_bsr_light
+from src.ldm.modules.image_degradation import degradation_fn_bsr_light
 
 class AddLR(object):
     def __init__(self, factor):

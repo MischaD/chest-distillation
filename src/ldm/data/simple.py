@@ -6,7 +6,7 @@ import json
 from PIL import Image
 from torchvision import transforms
 from einops import rearrange, repeat
-from ldm.util import instantiate_from_config
+from src.ldm.util import instantiate_from_config
 from datasets import load_dataset
 import pandas as pd
 from src.datasets import get_dataset

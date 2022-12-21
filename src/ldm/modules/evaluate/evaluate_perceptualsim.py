@@ -10,7 +10,7 @@ import torchvision.transforms as transforms
 from torchvision import models
 from PIL import Image
 
-from ldm.modules.evaluate.ssim import ssim
+from src.ldm.modules.evaluate.ssim import ssim
 
 
 transform = transforms.Compose([transforms.ToTensor()])
