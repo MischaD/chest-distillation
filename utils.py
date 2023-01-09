@@ -89,6 +89,7 @@ def resize_long_edge(img, size_long_edge):
 
 
 SPLIT_TO_DATASETSPLIT = {0:DatasetSplit("test"), 1:DatasetSplit("train"), 2:DatasetSplit("val")}
+DATASETSPLIT_TO_SPLIT = {"test":0, "train":1, "val":2}
 
 
 def load_model_from_config(config, ckpt, verbose=False):
@@ -161,3 +162,6 @@ def collate_batch(batch):
             if all([value[0].size() == value[i].size() for i in range(len(value))]):
                 batched_data[key] = torch.concat(batched_data[key])
     return batched_data
+
+def prompts_from_file():
+    pass
