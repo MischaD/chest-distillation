@@ -12,6 +12,8 @@ from pytorch_lightning import seed_everything
 from torch import autocast
 from contextlib import contextmanager, nullcontext
 from utils import get_compute_mask_args, make_exp_config, load_model_from_config, collate_batch, img_to_viz
+from log import logger
+import pprint
 
 from src.ldm.util import instantiate_from_config
 from src.ldm.models.diffusion.ddim import DDIMSampler
@@ -47,31 +49,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
     parser.add_argument(
-        "--prompt",
-        type=str,
-        nargs="?",
-        default="a painting of a virus monster playing guitar",
-        help="the prompt to render"
-    )
-
-    parser.add_argument(
-        "--outdir",
+        "--out_dir",
         type=str,
         nargs="?",
         help="dir to write results to",
-        default="outputs/txt2img-samples"
-    )
-
-    parser.add_argument(
-        "--skip_grid",
-        action='store_true',
-        help="do not save a grid, only individual samples. Helpful when evaluating lots of samples",
     )
 
     parser.add_argument(
         "--ddim_steps",
         type=int,
-        default=75,
         help="number of ddim sampling steps",
     )
 
@@ -89,21 +75,18 @@ def main():
     parser.add_argument(
         "--ddim_eta",
         type=float,
-        default=0.0,
         help="ddim eta (eta=0.0 corresponds to deterministic sampling",
     )
 
     parser.add_argument(
-        "--n_samples",
+        "--batch_size",
         type=int,
-        default=1,
         help="how many samples to produce for each given prompt. A.k.a batch size",
     )
 
     parser.add_argument(
         "--scale",
         type=float,
-        default=4.0,
         help="unconditional guidance scale: eps = eps(x, empty) + scale * (eps(x, cond) - eps(x, empty))",
     )
 
@@ -116,27 +99,23 @@ def main():
     parser.add_argument(
         "--ckpt",
         type=str,
-        default="logs/f8-kl-clip-encoder-256x256-run1/checkpoints/last.ckpt",
-        help="path to checkpoint of model",
     )
     parser.add_argument(
         "--seed",
         type=int,
-        default=42,
         help="the seed (for reproducible sampling)",
     )
-    parser.add_argument(
-        "--precision",
-        type=str,
-        help="evaluate at this precision",
-        choices=["full", "autocast"],
-        default="autocast"
-    )
+
     args = parser.parse_args()
     opt = make_exp_config(args.EXP_PATH)
-    opt.args = args
+    for key, value in vars(args).items():
+        if value is not None:
+            setattr(opt, key, value)
+            logger.info(f"Overwriting exp file key {key} with: {value}")
+    logger.debug(pprint.PrettyPrinter(depth=4).pformat({k:v for k, v in vars(opt).items() if not k.startswith("__")}))
 
-    config = OmegaConf.load(f"{opt.config}")
+    print(os.path.abspath("."))
+    config = OmegaConf.load(f"{opt.config_path}")
     model = load_model_from_config(config, f"{opt.ckpt}")
 
     device = torch.device("cuda")
@@ -165,9 +144,8 @@ def main():
     if opt.args.fixed_code:
         start_code = torch.randn([opt.args.n_samples, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
 
-    precision_scope = autocast if opt.precision=="autocast" else nullcontext
     with torch.no_grad():
-        with precision_scope("cuda"):
+        with autocast("cuda"):
             with model.ema_scope():
                 tic = time.time()
                 all_samples = list()

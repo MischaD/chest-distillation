@@ -4,6 +4,7 @@ import time
 import torch
 import torchvision
 import pytorch_lightning as pl
+import signal
 
 from packaging import version
 from omegaconf import OmegaConf
@@ -42,24 +43,6 @@ def get_parser(**parser_kwargs):
         nargs="?",
         default="",
         help="path to checkpoint to load model state from"
-    )
-    parser.add_argument(
-        "-n",
-        "--name",
-        type=str,
-        const=True,
-        default="",
-        nargs="?",
-        help="postfix for logdir",
-    )
-    parser.add_argument(
-        "-r",
-        "--resume",
-        type=str,
-        const=True,
-        default="",
-        nargs="?",
-        help="resume from logdir or checkpoint in logdir",
     )
     parser.add_argument(
         "-b",
@@ -862,16 +845,7 @@ if __name__ == "__main__":
                 trainer.save_checkpoint(ckpt_path)
 
 
-        def divein(*args, **kwargs):
-            if trainer.global_rank == 0:
-                import pudb;
-                pudb.set_trace()
-
-
-        import signal
-
-        #signal.signal(signal.SIGUSR1, melk)
-        #signal.signal(signal.SIGUSR2, divein)
+        signal.signal(signal.SIGUSR1, melk)
 
         # run
         def check_validity():
@@ -899,36 +873,4 @@ if __name__ == "__main__":
 
         check_validity()
 
-        if opt.train:
-            trainer.fit(model, data)
-        if not opt.no_test and not trainer.interrupted:
-            trainer.test(model, data)
-    except RuntimeError as err:
-        if MULTINODE_HACKS:
-            import requests
-            import datetime
-            import os
-            import socket
-            device = os.environ.get("CUDA_VISIBLE_DEVICES", "?")
-            hostname = socket.gethostname()
-            ts = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-            #resp = requests.get('http://169.254.169.254/latest/meta-data/instance-id')
-            #print(f'ERROR at {ts} on {hostname}/{resp.text} (CUDA_VISIBLE_DEVICES={device}): {type(err).__name__}: {err}', flush=True)
-        raise err
-    except Exception:
-        if opt.debug and trainer.global_rank == 0:
-            try:
-                import pudb as debugger
-            except ImportError:
-                import pdb as debugger
-            debugger.post_mortem()
-        raise
-    finally:
-        # move newly created debug project to debug_runs
-        if opt.debug and not opt.resume and trainer.global_rank == 0:
-            dst, name = os.path.split(logdir)
-            dst = os.path.join(dst, "debug_runs", name)
-            os.makedirs(os.path.split(dst)[0], exist_ok=True)
-            os.rename(logdir, dst)
-        if trainer.global_rank == 0:
-            print(trainer.profiler.summary())
+        trainer.fit(model, data)
