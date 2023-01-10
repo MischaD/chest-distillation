@@ -54,7 +54,11 @@ def main():
         nargs="?",
         help="dir to write results to",
     )
-
+    parser.add_argument(
+        "--n_samples",
+        type=int,
+        help="How many samples to create for each prompt",
+    )
     parser.add_argument(
         "--ddim_steps",
         type=int,
@@ -121,79 +125,71 @@ def main():
     device = torch.device("cuda")
     model = model.to(device)
 
-    if opt.args.plms or opt.plms:
+    if opt.plms:
         sampler = PLMSSampler(model)
     else:
         sampler = DDIMSampler(model)
 
-    os.makedirs(opt.args.outdir, exist_ok=True)
-    outpath = opt.args.outdir
+    os.makedirs(opt.out_dir, exist_ok=True)
+    outpath = opt.out_dir
 
-    batch_size = opt.args.n_samples
-    print(f"reading prompts from {opt.args.from_file}")
+    batch_size = opt.batch_size
+    logger.info(f"reading prompts from {opt.from_file}")
     with open(opt.from_file, "r") as f:
         data = f.read().splitlines()
-        data = list(chunk(data, batch_size))
 
-    sample_path = os.path.join(outpath, "samples")
-    os.makedirs(sample_path, exist_ok=True)
-    base_count = len(os.listdir(sample_path))
-    grid_count = len(os.listdir(outpath)) - 1
 
     start_code = None
-    if opt.args.fixed_code:
-        start_code = torch.randn([opt.args.n_samples, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
+    if opt.fixed_code:
+        start_code = torch.randn([batch_size, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
 
     with torch.no_grad():
         with autocast("cuda"):
             with model.ema_scope():
-                tic = time.time()
-                all_samples = list()
-                for prompts in tqdm(data, desc="data"):
+                for prompt in tqdm(data, desc="data"):
+                    sample_path = os.path.join(outpath, "samples" + f"{prompt.replace(' ', '_')}")
+                    os.makedirs(sample_path, exist_ok=True)
+                    base_count = len(os.listdir(sample_path))
                     uc = None
                     if opt.scale != 1.0:
                         uc = model.get_learned_conditioning(batch_size * [""])
-                    if isinstance(prompts, tuple):
-                        prompts = list(prompts)
+
+                    if isinstance(prompt, tuple) or isinstance(prompt, str):
+                        prompts = list((prompt,))
                     c = model.get_learned_conditioning(prompts)
-                    shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
-                    samples_ddim, _ = sampler.sample(S=opt.ddim_steps,
-                                                     conditioning=c,
-                                                     batch_size=opt.n_samples,
-                                                     shape=shape,
-                                                     verbose=False,
-                                                     unconditional_guidance_scale=opt.scale,
-                                                     unconditional_conditioning=uc,
-                                                     eta=opt.ddim_eta,
-                                                     dynamic_threshold=opt.dyn,
-                                                     x_T=start_code)
 
-                    x_samples_ddim = model.decode_first_stage(samples_ddim)
-                    x_samples_ddim = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
+                    for n_samples in range(opt.n_samples):
+                        if not opt.fixed_code:
+                            start_code = torch.randn([batch_size, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
 
-                    for x_sample in x_samples_ddim:
-                        x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
-                        Image.fromarray(x_sample.astype(np.uint8)).save(
-                            os.path.join(sample_path, f"{base_count:05}.png"))
-                        base_count += 1
-                    all_samples.append(x_samples_ddim)
+                        shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
+                        #samples_ddim, _ = sampler.sample(S=opt.ddim_steps,
+                        #                                 conditioning=c,
+                        #                                 batch_size=opt.n_samples,
+                        #                                 shape=shape,
+                        #                                 verbose=False,
+                        #                                 unconditional_guidance_scale=opt.scale,
+                        #                                 unconditional_conditioning=uc,
+                        #                                 eta=opt.ddim_eta,
+                        #                                 dynamic_threshold=opt.dyn,
+                        #                                 x_T=start_code)
+                        samples, _ = sampler.sample(S=opt.ddim_steps,
+                                                    conditioning=c,
+                                                    batch_size=len(prompts),
+                                                    shape=shape,
+                                                    verbose=False,
+                                                    unconditional_guidance_scale=opt.scale,
+                                                    unconditional_conditioning=uc,
+                                                    x_T=start_code)
 
-                if not opt.skip_grid:
-                    # additionally, save as grid
-                    grid = torch.stack(all_samples, 0)
-                    grid = rearrange(grid, 'n b c h w -> (n b) c h w')
-                    grid = make_grid(grid, nrow=5)
+                        samples = model.decode_first_stage(samples)
+                        samples = torch.clamp((samples + 1.0) / 2.0, min=0.0, max=1.0)
 
-                    # to image
-                    grid = 255. * rearrange(grid, 'c h w -> h w c').cpu().numpy()
-                    Image.fromarray(grid.astype(np.uint8)).save(os.path.join(outpath, f'grid-{grid_count:04}.png'))
-                    grid_count += 1
-
-                toc = time.time()
-
-    print(f"Your samples are ready and waiting for you here: \n{outpath} \n"
-          f"Sampling took {toc - tic}s, i.e. produced {opt.n_samples / (toc - tic):.2f} samples/sec."
-          f" \nEnjoy.")
+                        for x_sample in samples:
+                            x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
+                            Image.fromarray(x_sample.astype(np.uint8)).save(
+                                os.path.join(sample_path, f"{base_count:05}.png"))
+                            base_count += 1
 
 
 if __name__ == "__main__":
