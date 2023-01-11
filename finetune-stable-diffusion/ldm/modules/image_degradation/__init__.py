@@ -1,2 +1,0 @@
-from ldm.modules.image_degradation_deprecated.bsrgan import degradation_bsrgan_variant as degradation_fn_bsr
-from ldm.modules.image_degradation_deprecated.bsrgan_light import degradation_bsrgan_variant as degradation_fn_bsr_light

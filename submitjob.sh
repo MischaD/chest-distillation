@@ -1,26 +1,29 @@
 #!/bin/bash -l
-#SBATCH --partition=a100 --gres=gpu:a100:2 --time=24:00:00
-#SBATCH --job-name=UnetRefinedBirds
+#SBATCH --time=24:00:00
+#SBATCH --job-name=SDv2_Baseline
+#SBATCH --gres=gpu:a100:1
+#SBATCH --partition=a100
+#SBATCH --export=NONE
+
+cd $WORK/pycharm/chest-distillation
 
 unset SLURM_EXPORT_ENV
 export http_proxy=http://proxy.rrze.uni-erlangen.de:80
 export https_proxy=http://proxy.rrze.uni-erlangen.de:80
 
-cd $WORK/pycharm/foba
+#
+#load required modules (compiler, ...)
 module load python/3.9-anaconda
-conda activate fobaunet
-wandb online
+module load cudnn/8.2.4.15-11.4
+module load cuda/11.4.2
+#
+# anaconda
+source activate chest
 
-python ./scripts/train_segmentation_refined.py experiments/birds/compute_preliminary_bird_masks_train_hpc.py
+timeout 23h python scripts/txt2img.py experiments/chestxray/generate_sdv2_baseline_hpc.py --from_file="./experiments/chestxray/prompts/chestxraytest.txt" --out_dir=output/sd_unfinetuned_baseline_4p0 --n_samples=5000 --scale=4
 
-#  tinyx.nhr.fau.de
-#SBATCH --export=NONE
-
-
-#CUDA_VISIBLE_DEVICES=1 python scripts/compute_attention_masks_raw.py experiments/human36/compute_masks_human.py
-
-# Finetuning
-# Create config file
-# Change paths in config file
-#python main.py finetune-stable-diffusion/main.py -t --base /vol/ideadata/ed52egek/pycharm/foba/experiments/configs/human36_inpainting.yaml --gpus 0,1 --scale_lr False --num_nodes 1 --check_val_every_n_epoch 1 --finetune_from /vol/ideadata/ed52egek/pycharm/foba/stable-diffusion/sd-v1-4-full-ema.ckpt data.params.batch_size=4 lightning.trainer.accumulate_grad_batches=1 data.params.validation.params.n_gpus=2
-#/home/saturn/iwai/iwai003h/sd-v1-4-full-ema.ckpt
+python -m pytorch_fid output/sd_unfinetuned_baseline_4p0/samplesa_photo_of_a_chest_xray/ /home/atuin/b143dc/b143dc11/data/fobadiffusion/chestxray14/test_images/
+# restart slurm script after 24h
+if [[ $? -eq 124 ]]; then
+  sbatch submitjob.sh
+fi

@@ -2,9 +2,11 @@
 
 import torch
 import numpy as np
+from einops import repeat
 from tqdm import tqdm
+from log import logger
 
-from ldm.modules.diffusionmodules.util import make_ddim_sampling_parameters, make_ddim_timesteps, noise_like, extract_into_tensor
+from src.ldm.modules.diffusionmodules.util import make_ddim_sampling_parameters, make_ddim_timesteps, noise_like, extract_into_tensor
 
 
 class DDIMSampler(object):
@@ -94,7 +96,7 @@ class DDIMSampler(object):
                 if conditioning.shape[0] != batch_size:
                     print(f"Warning: Got {conditioning.shape[0]} conditionings but batch-size is {batch_size}")
 
-        self.make_schedule(ddim_num_steps=S, ddim_eta=eta, verbose=verbose)
+        self.make_schedule(ddim_num_steps=S, ddim_eta=0, verbose=verbose)
         # sampling
         C, H, W = shape
         size = (batch_size, C, H, W)
@@ -118,6 +120,18 @@ class DDIMSampler(object):
                                                     ucg_schedule=ucg_schedule
                                                     )
         return samples, intermediates
+
+    @torch.no_grad()
+    def sample_attention(self,
+
+                         ):
+        self.make_schedule(ddim_num_steps=S, ddim_eta=eta, verbose=verbose)
+        # sampling
+        C, H, W = shape
+        size = (batch_size, C, H, W)
+        print(f'Data shape for DDIM sampling is {size}, eta {eta}')
+
+
 
     @torch.no_grad()
     def ddim_sampling(self, cond, shape,
@@ -249,6 +263,75 @@ class DDIMSampler(object):
             noise = torch.nn.functional.dropout(noise, p=noise_dropout)
         x_prev = a_prev.sqrt() * pred_x0 + dir_xt + noise
         return x_prev, pred_x0
+
+    @torch.no_grad()
+    def sample_with_attention(self,
+                              t,
+                              S,
+                              batch_size,
+                              shape,
+                              #model=None,
+                              conditioning=None,
+                              normals_sequence=None,
+                              quantize_x0=False,
+                              eta=0.,
+                              mask=None,
+                              x0=None,
+                              temperature=1.,
+                              noise_dropout=0.,
+                              score_corrector=None,
+                              corrector_kwargs=None,
+                              verbose=True,
+                              x_T=None,
+                              log_every_t=100,
+                              unconditional_guidance_scale=1.,
+                              unconditional_conditioning=None,
+                              patch_kwargs={},
+                              repeat_steps=1,
+                              # this has to come in the same format as the conditioning, # e.g. as encoded tokens, ...
+                              **kwargs
+                              ):
+        self.make_schedule(ddim_num_steps=S, ddim_eta=eta, verbose=verbose)
+        device = self.model.betas.device
+        b, C, H, W = shape
+
+        x_t = x_T[:b]
+        x0 = x0.to(x_t.device)
+        mask = mask.to(x_t.device)
+
+        intermediates = {'attention': []}
+        time_range = np.flip(self.ddim_timesteps)
+        time_range = np.array([x for x in time_range if x <= t])
+        time_range = repeat(time_range, "h -> (h h2)", h2=repeat_steps)
+        total_steps = len(time_range)
+        logger.info(f"Time range: {time_range}")
+
+        old_eps = [torch.zeros_like(x_T)]  # only relevant for e_t, which we don't use anyway
+        for i, step in enumerate(time_range):
+            index = total_steps - i - 1
+            ts = torch.full((b,), step, device=device, dtype=torch.long)
+            ts_next = torch.full((b,), time_range[min(i + 1, len(time_range) - 1)], device=device, dtype=torch.long)
+
+            img_orig = self.model.q_sample(x0, ts)
+            x_t = img_orig * mask + (1. - mask) * x_t
+
+            outs = self.p_sample_ddim(x_t, conditioning, ts, index=index, use_original_steps=False,
+                                      quantize_denoised=False, temperature=temperature,
+                                      noise_dropout=noise_dropout, score_corrector=score_corrector,
+                                      corrector_kwargs=corrector_kwargs,
+                                      unconditional_guidance_scale=unconditional_guidance_scale,
+                                      unconditional_conditioning=unconditional_conditioning,
+                                      old_eps=old_eps, t_next=ts_next)
+            x_t, pred_x0, e_t = outs
+            if repeat_steps != 1:
+                # only use plmr if we don't repeat timesteps
+                old_eps.append(e_t)
+            if len(old_eps) >= 4:
+                old_eps.pop(0)
+            intermediates['attention'].append(self.model.model.diffusion_model.get_attention_map())
+
+        return x_t, intermediates
+
 
     @torch.no_grad()
     def encode(self, x0, c, t_enc, use_original_steps=False, return_intermediates=None,

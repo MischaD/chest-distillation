@@ -1,6 +1,0 @@
-logs/
-dump/
-outputs/
-flagged/
-*.egg-info
-__pycache__
