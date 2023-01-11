@@ -4,9 +4,10 @@ import cv2
 from einops import rearrange, repeat, reduce
 
 
-def path_to_tensor(path):
+def path_to_tensor(path, normalize=True):
     img = torch.tensor(cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB), dtype=torch.float32)
-    img = ((img / 127.5) - 1)
+    if normalize:
+        img = ((img / 127.5) - 1)
     img = rearrange(img, "h w c -> 1 c h w")
     return img
 

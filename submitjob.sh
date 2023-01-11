@@ -20,9 +20,10 @@ module load cuda/11.4.2
 # anaconda
 source activate chest
 
-timeout 23h python scripts/txt2img.py experiments/chestxray/generate_sdv2_baseline_hpc.py --from_file="./experiments/chestxray/prompts/chestxraytest.txt" --out_dir=output/sd_unfinetuned_baseline_4p0 --n_samples=5000 --scale=4
+#timeout 23h python scripts/txt2img.py experiments/chestxray/generate_sdv2_baseline_hpc.py --from_file="./experiments/chestxray/prompts/chestxraytest.txt" --out_dir=output/sd_unfinetuned_baseline_4p0 --n_samples=5000 --scale=4
 
-python -m pytorch_fid output/sd_unfinetuned_baseline_4p0/samplesa_photo_of_a_chest_xray/ /home/atuin/b143dc/b143dc11/data/fobadiffusion/chestxray14/test_images/
+#python -m pytorch_fid output/sd_unfinetuned_baseline_4p0/samplesa_photo_of_a_chest_xray/ /home/atuin/b143dc/b143dc11/data/fobadiffusion/chestxray14/test_images/
+python scripts/calc_ms_ssim.py output/sd_unfinetuned_baseline_4p0/samplesa_photo_of_a_chest_xray/ /home/atuin/b143dc/b143dc11/data/fobadiffusion/chestxray14/test_images/
 # restart slurm script after 24h
 if [[ $? -eq 124 ]]; then
   sbatch submitjob.sh
