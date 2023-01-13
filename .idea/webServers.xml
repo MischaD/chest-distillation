@@ -2,8 +2,8 @@
 <project version="4">
   <component name="WebServers">
     <option name="servers">
-      <webServer id="c13bf8d9-c2fc-482c-a40e-c93dc39f0e77" name="alex">
-        <fileTransfer accessType="SFTP" host="alex.nhr.fau.de" port="22" sshConfigId="0f82ecdd-c99c-43b6-b464-8a33b5bb395b" sshConfig="alex">
+      <webServer id="3ec43331-ab69-4b87-a5ce-ccc2cfc3c47f" name="alexp">
+        <fileTransfer accessType="SFTP" host="alex.nhr.fau.de" port="22" sshConfigId="6bcf5654-529d-4127-a5fe-692d86a17b4c" sshConfig="alexp" keyPair="true">
           <advancedOptions>
             <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
           </advancedOptions>

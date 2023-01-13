@@ -282,33 +282,3 @@ def save_fid_stats(paths, batch_size, device, dims, num_workers=1):
                                         dims, device, num_workers)
 
     np.savez_compressed(paths[1], mu=m1, sigma=s1)
-
-
-def main():
-    args = parser.parse_args()
-
-    device = torch.device('cuda')
-
-    if args.num_workers is None:
-        try:
-            num_cpus = len(os.sched_getaffinity(0))
-        except AttributeError:
-            # os.sched_getaffinity is not available under Windows, use
-            # os.cpu_count instead (which may not return the *available* number
-            # of CPUs).
-            num_cpus = os.cpu_count()
-
-        num_workers = min(num_cpus, 8) if num_cpus is not None else 0
-    else:
-        num_workers = args.num_workers
-
-    fid_value = calculate_fid_given_paths(args.path,
-                                          args.batch_size,
-                                          device,
-                                          args.dims,
-                                          num_workers)
-    print(f'XRV FID: {fid_value} --> ${fid_value:2.01f}$', fid_value)
-
-
-if __name__ == '__main__':
-    main()

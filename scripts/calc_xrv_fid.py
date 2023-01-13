@@ -1,26 +1,52 @@
-import torchxrayvision as xrv
-import skimage, torch, torchvision
-from einops import rearrange
+import os
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
+import torch
+from src.inception import InceptionV3
+from src.evaluation.xrv_fid import calculate_fid_given_paths
 
-# Prepare the image:
-#img = skimage.io.imread("/vol/ideadata/ed52egek/pycharm/chest-distillation/output/sd_unfinetuned_baseline_4p0/00000.png")
-img = skimage.io.imread("/vol/ideadata/ed52egek/data/fobadiffusion/chestxray14/images/00030791_000.png")
-img = rearrange(xrv.datasets.normalize(img, 255), "h w -> 1 h w") # convert 8-bit image to [-1024, 1024] range
+parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
+parser.add_argument('--batch-size', type=int, default=50,
+                    help='Batch size to use')
+parser.add_argument('--num-workers', type=int,
+                    help=('Number of processes to use for data loading. '
+                          'Defaults to `min(8, num_cpus)`'))
+parser.add_argument('--dims', type=int, default=1024,
+                    choices=list(InceptionV3.BLOCK_INDEX_BY_DIM),
+                    help=('Dimensionality of Inception features to use. '
+                          'By default, uses pool3 features'))
+parser.add_argument('path', type=str, nargs=2,
+                    help=('Paths to the generated images or '
+                          'to .npz statistic files'))
 
-transform = torchvision.transforms.Compose([xrv.datasets.XRayCenterCrop(),xrv.datasets.XRayResizer(224)])
+IMAGE_EXTENSIONS = {'bmp', 'jpg', 'jpeg', 'pgm', 'png', 'ppm',
+                    'tif', 'tiff', 'webp'}
 
-img = transform(img)
-img = torch.from_numpy(img)
 
-# Load model and process image
-model = xrv.models.DenseNet(weights="densenet121-res224-all")
+def main():
+    args = parser.parse_args()
 
-outputs = model(img[None,...]) # or model.features(img[None,...])
-features = model.features2(img[None,...])
-features_fid = rearrange(features, "c f -> c f 1 1")
-out = model.classifier(features)
-out = torch.sigmoid(out)
-out = xrv.models.op_norm(out, model.op_threshs)
+    device = torch.device('cuda')
 
-# Print results
-print(dict(zip(model.pathologies,outputs[0].detach().numpy())))
+    if args.num_workers is None:
+        try:
+            num_cpus = len(os.sched_getaffinity(0))
+        except AttributeError:
+            # os.sched_getaffinity is not available under Windows, use
+            # os.cpu_count instead (which may not return the *available* number
+            # of CPUs).
+            num_cpus = os.cpu_count()
+
+        num_workers = min(num_cpus, 8) if num_cpus is not None else 0
+    else:
+        num_workers = args.num_workers
+
+    fid_value = calculate_fid_given_paths(args.path,
+                                          args.batch_size,
+                                          device,
+                                          args.dims,
+                                          num_workers)
+    print(f'XRV FID: {fid_value} --> ${fid_value:2.01f}$', fid_value)
+
+
+if __name__ == '__main__':
+    main()
