@@ -40,9 +40,13 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 import numpy as np
 import torch
 import torchvision.transforms as TF
+import torchxrayvision as xrv
+import torchvision
+import skimage
 from PIL import Image
 from scipy import linalg
 from torch.nn.functional import adaptive_avg_pool2d
+from einops import rearrange
 
 try:
     from tqdm import tqdm
@@ -59,7 +63,7 @@ parser.add_argument('--batch-size', type=int, default=50,
 parser.add_argument('--num-workers', type=int,
                     help=('Number of processes to use for data loading. '
                           'Defaults to `min(8, num_cpus)`'))
-parser.add_argument('--dims', type=int, default=2048,
+parser.add_argument('--dims', type=int, default=1024,
                     choices=list(InceptionV3.BLOCK_INDEX_BY_DIM),
                     help=('Dimensionality of Inception features to use. '
                           'By default, uses pool3 features'))
@@ -81,9 +85,15 @@ class ImagePathDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, i):
         path = self.files[i]
-        img = Image.open(path).convert('RGB')
-        if self.transforms is not None:
-            img = self.transforms(img)
+        img = skimage.io.imread(path, as_gray=True)
+        if len(img.shape) == 3:
+            print("oi")
+        img = rearrange(xrv.datasets.normalize(img, 255), "h w -> 1 h w")  # convert 8-bit image to [-1024, 1024] range
+
+        transform = torchvision.transforms.Compose([xrv.datasets.XRayCenterCrop(), xrv.datasets.XRayResizer(224)])
+
+        img = transform(img)
+        img = torch.from_numpy(img)
         return img
 
 
@@ -130,14 +140,7 @@ def get_activations(files, model, batch_size=50, dims=2048, device='cpu',
         batch = batch.to(device)
 
         with torch.no_grad():
-            pred = model(batch)[0]
-
-        # If model output is not scalar, apply global spatial average pooling.
-        # This happens if you choose a dimensionality not equal 2048.
-        if pred.size(2) != 1 or pred.size(3) != 1:
-            pred = adaptive_avg_pool2d(pred, output_size=(1, 1))
-
-        pred = pred.squeeze(3).squeeze(2).cpu().numpy()
+            pred = model.features2(batch).detach().cpu()
 
         pred_arr[start_idx:start_idx + pred.shape[0]] = pred
 
@@ -237,6 +240,7 @@ def compute_statistics_of_path(path, model, batch_size, dims, device,
         path = pathlib.Path(path)
         files = sorted([file for ext in IMAGE_EXTENSIONS
                        for file in path.glob('*.{}'.format(ext))])
+        files = files[:5000]
         m, s = calculate_activation_statistics(files, model, batch_size,
                                                dims, device, num_workers)
 
@@ -249,9 +253,7 @@ def calculate_fid_given_paths(paths, batch_size, device, dims, num_workers=1):
         if not os.path.exists(p):
             raise RuntimeError('Invalid path: %s' % p)
 
-    block_idx = InceptionV3.BLOCK_INDEX_BY_DIM[dims]
-
-    model = InceptionV3([block_idx]).to(device)
+    model = xrv.models.DenseNet(weights="densenet121-res224-all").to("cuda")
 
     m1, s1 = compute_statistics_of_path(paths[0], model, batch_size,
                                         dims, device, num_workers)
@@ -305,7 +307,7 @@ def main():
                                           device,
                                           args.dims,
                                           num_workers)
-    print('FID: ', fid_value)
+    print(f'XRV FID: {fid_value} --> ${fid_value:2.01f}$', fid_value)
 
 
 if __name__ == '__main__':
