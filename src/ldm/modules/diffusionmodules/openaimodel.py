@@ -17,6 +17,7 @@ from src.ldm.modules.diffusionmodules.util import (
 )
 from src.ldm.modules.attention import SpatialTransformer
 from src.ldm.util import exists
+from src.ldm.util import AttentionSaveMode
 
 
 # dummy replace
@@ -469,8 +470,12 @@ class UNetModel(nn.Module):
         num_attention_blocks=None,
         disable_middle_self_attn=False,
         use_linear_in_transformer=False,
+        attention_save_mode="off",
     ):
         super().__init__()
+
+        self.attention_save_mode = AttentionSaveMode(attention_save_mode)
+
         if use_spatial_transformer:
             assert context_dim is not None, 'Fool!! You forgot to include the dimension of your cross-attention conditioning...'
 
@@ -589,7 +594,8 @@ class UNetModel(nn.Module):
                             ) if not use_spatial_transformer else SpatialTransformer(
                                 ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
                                 disable_self_attn=disabled_sa, use_linear=use_linear_in_transformer,
-                                use_checkpoint=use_checkpoint
+                                use_checkpoint=use_checkpoint,
+                                attention_save_mode=self.attention_save_mode,
                             )
                         )
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
@@ -646,7 +652,8 @@ class UNetModel(nn.Module):
             ) if not use_spatial_transformer else SpatialTransformer(  # always uses a self-attn
                             ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
                             disable_self_attn=disable_middle_self_attn, use_linear=use_linear_in_transformer,
-                            use_checkpoint=use_checkpoint
+                            use_checkpoint=use_checkpoint,
+                            attention_save_mode=self.attention_save_mode,
                         ),
             ResBlock(
                 ch,
@@ -700,7 +707,8 @@ class UNetModel(nn.Module):
                             ) if not use_spatial_transformer else SpatialTransformer(
                                 ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
                                 disable_self_attn=disabled_sa, use_linear=use_linear_in_transformer,
-                                use_checkpoint=use_checkpoint
+                                use_checkpoint=use_checkpoint,
+                                attention_save_mode=self.attention_save_mode
                             )
                         )
                 if level and i == self.num_res_blocks[level]:
@@ -734,6 +742,71 @@ class UNetModel(nn.Module):
             conv_nd(dims, model_channels, n_embed, 1),
             #nn.LogSoftmax(dim=1)  # change to cross_entropy and produce non-normalized logits
         )
+
+    def get_attention_map(self):
+        attention_maps = []
+        for layer in self.input_blocks + self.middle_block + self.output_blocks:
+            if not isinstance(layer, SpatialTransformer) and not isinstance(layer, nn.Sequential):
+                continue
+
+            sublayers = []
+            if isinstance(layer, nn.Sequential):
+                for sublayer in layer:
+                    sublayers.append(sublayer)
+            else:
+                sublayers.append(layer)
+
+            for sublayer in sublayers:
+                if not isinstance(sublayer, SpatialTransformer):
+                    continue
+
+                for transformer_block in sublayer.transformer_blocks:
+                    if transformer_block.attn1.attention_map is not None:
+                        attention_maps.append(transformer_block.attn1.attention_map)
+                    if transformer_block.attn2.attention_map is not None:
+                        attention_maps.append(transformer_block.attn2.attention_map)
+        return attention_maps
+
+    def disable_attention_save_mode(self):
+        for layer in self.input_blocks + self.middle_block + self.output_blocks:
+            if not isinstance(layer, SpatialTransformer) and not isinstance(layer, nn.Sequential):
+                continue
+
+            sublayers = []
+            if isinstance(layer, nn.Sequential):
+                for sublayer in layer:
+                    sublayers.append(sublayer)
+            else:
+                sublayers.append(layer)
+
+            for sublayer in sublayers:
+                if not isinstance(sublayer, SpatialTransformer):
+                    continue
+
+                for transformer_block in sublayer.transformer_blocks:
+                    if transformer_block.attn1.attention_map is not None:
+                        transformer_block.attn1.save_attention = False
+
+    def enable_attention_save_mode(self):
+        for layer in self.input_blocks + self.middle_block + self.output_blocks:
+            if not isinstance(layer, SpatialTransformer) and not isinstance(layer, nn.Sequential):
+                continue
+
+            sublayers = []
+            if isinstance(layer, nn.Sequential):
+                for sublayer in layer:
+                    sublayers.append(sublayer)
+            else:
+                sublayers.append(layer)
+
+            for sublayer in sublayers:
+                if not isinstance(sublayer, SpatialTransformer):
+                    continue
+
+                for transformer_block in sublayer.transformer_blocks:
+                    if transformer_block.attn2.attention_map is not None:
+                        transformer_block.attn2.save_attention = True
+
 
     def convert_to_fp16(self):
         """

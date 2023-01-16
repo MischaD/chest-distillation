@@ -3,6 +3,7 @@ import importlib
 import torch
 from torch import optim
 import numpy as np
+from enum import Enum
 
 from inspect import isfunction
 from PIL import Image, ImageDraw, ImageFont
@@ -195,3 +196,12 @@ class AdamWwithEMAandWings(optim.Optimizer):
                 ema_param.mul_(cur_ema_decay).add_(param.float(), alpha=1 - cur_ema_decay)
 
         return loss
+
+class AttentionSaveMode(Enum):
+    """
+    What attention layers to log. only self, only cross, both, or neither
+    """
+    off = "off"
+    self = "self" # pixel on pixel
+    cross = "cross" # pixel on prompt (v)
+    all = "all"

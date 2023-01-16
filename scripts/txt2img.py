@@ -174,6 +174,7 @@ def main():
                         #                                 dynamic_threshold=opt.dyn,
                         #                                 x_T=start_code)
                         samples, _ = sampler.sample(S=opt.ddim_steps,
+                                                    t=1000,
                                                     conditioning=c,
                                                     batch_size=len(prompts),
                                                     shape=shape,

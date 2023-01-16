@@ -12,8 +12,8 @@ import torchvision
 def get_compute_mask_args():
     parser = argparse.ArgumentParser(description="Compute Masks")
     parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
-    parser.add_argument("--debug", action="store_true", default=False)
-    parser.add_argument("--prompt", type=str, default=None)
+    parser.add_argument("--prompt", type=str)
+    parser.add_argument("--out_dir", type=str)
     return parser.parse_args()
 
 def get_train_segmentation_refined():

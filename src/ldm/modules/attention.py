@@ -7,6 +7,8 @@ from einops import rearrange, repeat
 from typing import Optional, Any
 
 from src.ldm.modules.diffusionmodules.util import checkpoint
+from src.ldm.util import AttentionSaveMode
+
 
 try:
     import xformers
@@ -145,7 +147,7 @@ class SpatialSelfAttention(nn.Module):
 
 
 class CrossAttention(nn.Module):
-    def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.):
+    def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0., save_attention=False):
         super().__init__()
         inner_dim = dim_head * heads
         context_dim = default(context_dim, query_dim)
@@ -161,6 +163,10 @@ class CrossAttention(nn.Module):
             nn.Linear(inner_dim, query_dim),
             nn.Dropout(dropout)
         )
+
+        self.save_attention = save_attention
+        self.attention_map = None
+
 
     def forward(self, x, context=None, mask=None):
         h = self.heads
@@ -190,6 +196,9 @@ class CrossAttention(nn.Module):
 
         # attention, what we cannot get enough of
         sim = sim.softmax(dim=-1)
+
+        if self.save_attention:
+            self.attention_map = torch.clone(rearrange(sim, '(b h) n d -> b h n d', h=h).mean(dim=1, keepdim=True))
 
         out = einsum('b i j, b j d -> b i d', sim, v)
         out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
@@ -252,17 +261,25 @@ class BasicTransformerBlock(nn.Module):
     }
 
     def __init__(self, dim, n_heads, d_head, dropout=0., context_dim=None, gated_ff=True, checkpoint=True,
-                 disable_self_attn=False):
+                 disable_self_attn=False, attention_save_mode=None):
         super().__init__()
         attn_mode = "softmax-xformers" if XFORMERS_IS_AVAILBLE else "softmax"
         assert attn_mode in self.ATTENTION_MODES
         attn_cls = self.ATTENTION_MODES[attn_mode]
         self.disable_self_attn = disable_self_attn
+
+        if attention_save_mode == AttentionSaveMode("self"):
+            raise NotImplementedError()
+
+        save_attn1 = attention_save_mode == AttentionSaveMode("all") or attention_save_mode == AttentionSaveMode("self") # self because it is pixel on pixel attention
+        save_attn2 = attention_save_mode == AttentionSaveMode("all") or attention_save_mode == AttentionSaveMode("cross")
+
         self.attn1 = attn_cls(query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout,
-                              context_dim=context_dim if self.disable_self_attn else None)  # is a self-attention if not self.disable_self_attn
+                              context_dim=context_dim if self.disable_self_attn else None,
+                              save_attention=save_attn1)  # is a self-attention if not self.disable_self_attn
         self.ff = FeedForward(dim, dropout=dropout, glu=gated_ff)
         self.attn2 = attn_cls(query_dim=dim, context_dim=context_dim,
-                              heads=n_heads, dim_head=d_head, dropout=dropout)  # is self-attn if context is none
+                              heads=n_heads, dim_head=d_head, dropout=dropout, save_attention=save_attn2)  # is self-attn if context is none
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
         self.norm3 = nn.LayerNorm(dim)
@@ -291,7 +308,8 @@ class SpatialTransformer(nn.Module):
     def __init__(self, in_channels, n_heads, d_head,
                  depth=1, dropout=0., context_dim=None,
                  disable_self_attn=False, use_linear=False,
-                 use_checkpoint=True):
+                 use_checkpoint=True,
+                 attention_save_mode=AttentionSaveMode("off")):
         super().__init__()
         if exists(context_dim) and not isinstance(context_dim, list):
             context_dim = [context_dim]
@@ -309,7 +327,7 @@ class SpatialTransformer(nn.Module):
 
         self.transformer_blocks = nn.ModuleList(
             [BasicTransformerBlock(inner_dim, n_heads, d_head, dropout=dropout, context_dim=context_dim[d],
-                                   disable_self_attn=disable_self_attn, checkpoint=use_checkpoint)
+                                   disable_self_attn=disable_self_attn, checkpoint=use_checkpoint, attention_save_mode=attention_save_mode)
              for d in range(depth)]
         )
         if not use_linear:

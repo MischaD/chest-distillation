@@ -35,6 +35,7 @@ model:
         transformer_depth: 1
         context_dim: 1024
         legacy: False
+        attention_save_mode: "cross" #
 
     first_stage_config:
       target: src.ldm.models.autoencoder.AutoencoderKL

@@ -41,6 +41,3 @@ synthesis_steps=50
 # dataloading
 batch_size=1
 num_workers=1
-
-# logging
-log_dir = "./log/"

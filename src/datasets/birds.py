@@ -71,7 +71,7 @@ class BirdDataset(FOBADataset):
                 raise NotImplementedError("Unetested Feature!")
 
 
-        tmp_mask_path = os.path.join(self.opt.base_dir, "refined_mask_tmp", entry["rel_path"] + ".pt")
+        tmp_mask_path = os.path.join(self.base_dir, "refined_mask_tmp", entry["rel_path"] + ".pt")
         if os.path.isfile(tmp_mask_path):
             entry["refined_mask"] = torch.load(tmp_mask_path)
         return entry
