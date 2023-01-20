@@ -33,7 +33,7 @@ dataset_args_val = dict(
 dataset_args_test = dict(
     base_dir=data_dir,
     split=DatasetSplit("test"),
-    limit_dataset=[0, 10],
+    limit_dataset=[0, 10000],
 )
 
 # dataset

@@ -6,6 +6,7 @@ import os
 import cv2
 import pickle
 import numpy as np
+import pandas as pd
 import pytorch_lightning as pl
 import datetime
 import torchvision
@@ -20,9 +21,11 @@ from src.datasets import get_dataset
 from src.foreground_masks import GMMMaskSuggestor
 from src.visualization.utils import model_to_viz
 from log import logger, log_experiment, file_handler
+from sklearn.metrics import jaccard_score
 from utils import get_compute_mask_args, make_exp_config, load_model_from_config, collate_batch, img_to_viz
 from einops import reduce, rearrange, repeat
 from pytorch_lightning import seed_everything
+from mpl_toolkits.axes_grid1 import ImageGrid
 from omegaconf import OmegaConf
 from src.ldm.util import instantiate_from_config
 from src.ldm.util import AttentionSaveMode
@@ -44,10 +47,15 @@ def get_latent_slice(batch, opt):
             ds_slice.append(slice(slice_.start // opt.f, slice_.stop // opt.f, None))
     return tuple(ds_slice)
 
-def apply_rect(img, x, y, h, w):
+def apply_rect(img, x, y, h, w, color="red"):
     img = (img * 255).to(torch.uint8).numpy()
     img = rearrange(img, "c h w -> h w c")
-    img = cv2.rectangle(img.copy(), [x, y], [x + w, y + h], (255, 0, 0), 3)
+    if color == "red":
+        color = (255, 0, 0)
+    elif color == "blue":
+        color = (0, 0, 255)
+
+    img = cv2.rectangle(img.copy(), [x, y], [x + h, y + w], color, 3)
     img = rearrange(img, "h w c -> c h w") / 255.
     return torch.tensor(img)
 
@@ -197,30 +205,94 @@ def main(opt):
     dataset.add_preliminary_masks(opt.out_dir)
     mask_suggestor = GMMMaskSuggestor(opt)
     log_some = 10
+    results = {"rel_path":[], "Finding Label":[], "iou":[], "miou":[], "distance":[]}
+
     for samples in tqdm(dataloader, "computing metrics"):
         for i in range(len(samples["x"])):
             sample = {k: v[i] for k, v in samples.items()}
             resize_to_input_size = torchvision.transforms.Resize(1024)
-            x, y, w, h = int(sample["bbox"]["bbox_x"]), int(sample["bbox"]["bbox_y"]), int(sample["bbox"]["bbox_w"]), int(sample["bbox"]["bbox_h"])
-
-            prelim_mask = sample["preliminary_mask"]
-            prelim_mask_large = resize_to_input_size(repeat(prelim_mask.squeeze(), "h w -> 3 h w"))
-            prelim_mask_large = (prelim_mask_large - prelim_mask_large.min())/(prelim_mask_large.max() - prelim_mask_large.min())
-            prelim_mask_large = resize_to_input_size(prelim_mask_large)
-            prelim_mask_large = apply_rect(prelim_mask_large, x, y, h, w)
+            bbox = int(sample["bbox"]["bbox_x"]), int(sample["bbox"]["bbox_y"]), int(sample["bbox"]["bbox_w"]), int(sample["bbox"]["bbox_h"])
+            x, y, h, w = tuple(bbox)
 
             binary_mask = repeat(mask_suggestor(sample, key="preliminary_mask"), "h w -> 3 h w")
             binary_mask_large = resize_to_input_size(binary_mask)
-            binary_mask_large = apply_rect(binary_mask_large, x, y, h, w)
 
-            img = (sample["img"] + 1)/2
-            img = apply_rect(img, x, y, h, w)
+            bbox_img = torch.zeros(img.size()[1:])
+            bbox_img[x:(x + w), y: (y + h)] = 1
+            iou, miou, distance, bboxpred = compute_metrics(bbox, binary_mask_large.float().mean(axis=0))
+            results["rel_path"].append(sample["rel_path"])
+            results["iou"].append(float(iou))
+            results["miou"].append(float(miou))
+            results["distance"].append(float(distance))
+            results["Finding Label"].append(sample["bboxlabel"])
 
-            grid = torch.stack([img, prelim_mask_large, binary_mask_large])
-            grid = make_grid(grid, nrow=1)
+            if log_some > 0:
+                logger.info(f"Logging example bboxes and attention maps to {opt.log_dir}")
+                img = (sample["img"] + 1) / 2
 
-            logger.info(f"Logging example bboxes and attention maps to {opt.log_dir}")
-            topil(grid).save(os.path.join(opt.log_dir, os.path.basename(sample["rel_path"]).rstrip(".png") + f"{sample['bboxlabel']}.png"))
+                prelim_mask = sample["preliminary_mask"]
+                prelim_mask_large = resize_to_input_size(repeat(prelim_mask.squeeze(), "h w -> 3 h w"))
+                prelim_mask_large = (prelim_mask_large - prelim_mask_large.min())/(prelim_mask_large.max() - prelim_mask_large.min())
+                prelim_mask_large = resize_to_input_size(prelim_mask_large)
+
+                binary_mask_large = apply_rect(binary_mask_large, x, y, h, w)
+                binary_mask_large = apply_rect(binary_mask_large, bboxpred[0], bboxpred[2], (bboxpred[1] - bboxpred[0]), (bboxpred[3] - bboxpred[2]), color="blue")
+
+                fig = plt.figure(figsize=(6, 20))
+                grid = ImageGrid(fig, 111,
+                                 nrows_ncols=(3, 1),
+                                 axes_pad=0.1)
+                for j, ax, im in zip(np.arange(3), grid, [img, prelim_mask_large, binary_mask_large]):
+                    ax.imshow(rearrange(im, "c h w -> h w c"))
+                    if j == 1:
+                        ax.imshow(prelim_mask_large.mean(axis=0), cmap="jet", alpha=0.4)
+                    ax.axis('off')
+
+                path = os.path.join(opt.log_dir, os.path.basename(sample["rel_path"]).rstrip(".png") + f"_{sample['bboxlabel']}")
+                logger.info(f"Logging to {path}")
+                plt.savefig(path + "_raw.png", bbox_inches="tight")
+                fig.suptitle(f"IoU: {float(iou):.3}, mIoU:{miou:.3}, distance (pixel): {distance:.3f}\n Red bbox is gt, blue is prediction")
+                plt.savefig(path + "_detailed.png", bbox_inches="tight")
+                plt.show()
+                log_some -= 1
+
+
+
+    df = pd.DataFrame(results)
+    logger.info(f"Saving file with results to {opt.log_dir}")
+    df.to_csv(os.path.join(opt.log_dir, "results.csv"))
+
+
+def compute_prediction_from_binary_mask(binary_prediction):
+    binary_prediction = binary_prediction.to(torch.bool).numpy()
+    horizontal_indicies = np.where(np.any(binary_prediction, axis=0))[0]
+    vertical_indicies = np.where(np.any(binary_prediction, axis=1))[0]
+    x1, x2 = horizontal_indicies[[0, -1]]
+    y1, y2 = vertical_indicies[[0, -1]]
+    prediction = np.zeros_like(binary_prediction)
+    prediction[y1:y2, x1:x2] = 1
+    center_of_mass = [x1 + (x2 - x1) / 2, y1 + (y2 - y1) / 2]
+    return prediction, center_of_mass, (x1, x2, y1, y2)
+
+
+def compute_metrics(bbox, binary_prediction):
+    x, y, h, w = bbox
+    ground_truth_bbox_img = torch.zeros_like(binary_prediction)
+    ground_truth_bbox_img[x:(x + w), y: (y + h)] = 1
+
+    prediction, center_of_mass_prediction, bbox_pred = compute_prediction_from_binary_mask(binary_prediction)
+
+    iou = torch.tensor(jaccard_score(ground_truth_bbox_img.flatten(), prediction.flatten()))
+    iou_rev = torch.tensor(jaccard_score(1 - ground_truth_bbox_img.flatten(), 1 - prediction.flatten()))
+
+    center_of_mass = [x + w / 2,
+                      y + h / 2]
+    miou = (iou + iou_rev)/2
+
+    distance = np.sqrt((center_of_mass[0] - center_of_mass_prediction[0])**2 +
+                       (center_of_mass[1] - center_of_mass_prediction[1])**2
+                      )
+    return iou, miou, distance, bbox_pred
 
 
 if __name__ == '__main__':

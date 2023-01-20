@@ -115,12 +115,16 @@ class ChestXray14BboxDataset(ChestXray14Dataset):
             self._load_images(np.arange(len(self)))
 
     def get_bbox(self, index, bboxlabel):
+        meta_data = self.get_meta_data(index, bboxlabel)
+        meta_data = meta_data[["bbox_h", "bbox_w", "bbox_x", "bbox_y"]]
+        return meta_data
+
+    def get_meta_data(self, index, bboxlabel):
         meta_data = self.meta_data.loc[os.path.basename(index)]
         if isinstance(meta_data, pd.DataFrame):
             meta_data = meta_data[meta_data["Finding Label"] == bboxlabel]
             assert len(meta_data) == 1
-            meta_data = meta_data.iloc[0]  # to series
-        meta_data = meta_data[["bbox_h", "bbox_w", "bbox_x", "bbox_y"]]
+            meta_data = meta_data.iloc[0]
+        # series
         return meta_data
-
 
