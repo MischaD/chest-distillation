@@ -2,11 +2,11 @@ from .cars import CarDataset
 from .birds import BirdDataset
 from .human import HumanDataset
 from .dogs import DogDataset
-from .chest import ChestXrayDataset
+from .chest import ChestXray14Dataset, ChestXray14BboxDataset
 
 
 def get_dataset(opt, split=None):
-    datasets = {"bird":BirdDataset, "human36": HumanDataset, "dog":DogDataset, "car": CarDataset, "chestxray": ChestXrayDataset}
+    datasets = {"bird":BirdDataset, "human36": HumanDataset, "dog":DogDataset, "car": CarDataset, "chestxray14": ChestXray14Dataset, "chestxray14bbox":ChestXray14BboxDataset}
     assert opt.dataset in datasets.keys(), f"Dataset has to be one of: {datasets.keys()}"
 
     if split is not None:

@@ -10,30 +10,35 @@ from random import shuffle
 from src.datasets.utils import file_to_list, resize, path_to_tensor
 from src.datasets.dataset import FOBADataset
 from einops import rearrange, repeat
+from log import logger
 import scipy.ndimage as ndimage
 from utils import DatasetSplit, SPLIT_TO_DATASETSPLIT, DATASETSPLIT_TO_SPLIT
 
 
-class ChestXrayDataset(FOBADataset):
+class ChestXray14Dataset(FOBADataset):
     def __init__(self, opt, H, W, mask_dir=None):
         super().__init__(opt, H, W, mask_dir)
         self.load_bboxes = opt.dataset_args.get("load_bboxes", False)
+        self._meta_data = None
         self._build_dataset()
         self.opt = opt
 
+    @property
+    def meta_data_path(self):
+        return os.path.join(self.base_dir, "data_paonly_joined.csv")
+
+    @property
+    def meta_data(self):
+        if self._meta_data is None:
+            logger.info(f"Loading image list from {self.meta_data_path}")
+            self._meta_data = pd.read_csv(self.meta_data_path, index_col="idx")
+            return self._meta_data
+        else:
+            return self._meta_data
+
     def _build_dataset(self):
-        image_paths, splits = [], []
-        for entry in file_to_list(os.path.join(self.base_dir, "images.txt")):
-            entry = entry.strip().split(" ")
-            image_paths.append(entry[0])
-            splits.append(entry[1])
-
-        self.meta_data = pd.read_csv(os.path.join(self.base_dir, "data_paonly_joined.csv"))
-        self.meta_data = self.meta_data[self.meta_data["split"] == DATASETSPLIT_TO_SPLIT[self.split.name]]
-
-        data = [dict(rel_path=img_path, img_path=os.path.join(self.base_dir, img_path), label=label) for img_path, label in zip(image_paths, self.meta_data["Finding Labels"])]
-        #data = [x for x in data if "".join(x["label"]).find("Mass") != -1] #[x for x in data if "".join(x["label"]).find("Mass")]
-
+        data = [dict(rel_path=os.path.join("images", img_path), img_path=os.path.join(self.base_dir, "images", img_path), label=label) for img_path, label in zip(list(self.meta_data.index), list(self.meta_data["Finding Labels"]))]
+        splits = self.meta_data["split"].astype(int)
         self._get_split(data, splits)
 
         if self.shuffle:
@@ -73,12 +78,49 @@ class ChestXrayDataset(FOBADataset):
         if self._inpainted_images_path is not None:
             entry["inpainted_image"] = torch.load(os.path.join(self._inpainted_images_path, entry["rel_path"] + ".pt"))
 
-        tmp_mask_path = os.path.join(self.opt.base_dir, "refined_mask_tmp", entry["rel_path"] + ".pt")
+        tmp_mask_path = os.path.join(self.base_dir, "refined_mask_tmp", entry["rel_path"] + ".pt")
         if os.path.isfile(tmp_mask_path):
             entry["refined_mask"] = torch.load(tmp_mask_path)
             if max(entry["refined_mask"].size()) > self.W:
                 assert False, "reimplement this"
 
+        entry["bbox"] = self.get_bbox(entry["rel_path"], bboxlabel=entry["bboxlabel"])
         return entry
+
+    def get_bbox(self, sample_path):
+        return self.meta_data.loc[os.path.basename(sample_path)]
+
+
+class ChestXray14BboxDataset(ChestXray14Dataset):
+    def __init__(self, opt, H, W, mask_dir=None):
+        super().__init__(opt, H, W, mask_dir)
+
+    @property
+    def meta_data_path(self):
+        return os.path.join(self.base_dir, "data_paonly_bboxonly_joined.csv")
+
+    def _build_dataset(self):
+        data = [dict(rel_path=os.path.join("images", img_path), img_path=os.path.join(self.base_dir, "images", img_path), label=label, bboxlabel=chest_label) for img_path, label, chest_label in zip(list(self.meta_data.index), list(self.meta_data["Finding Labels"]), list(self.meta_data["Finding Label"]))]
+        splits = self.meta_data["split"].astype(int)
+        self._get_split(data, splits)
+
+        if self.shuffle:
+            np.random.seed(42)
+            np.random.shuffle(self.data)
+
+        if self.limit_dataset is not None:
+            self.data = self.data[self.limit_dataset[0]:min(self.limit_dataset[1], len(self.data))]
+
+        if self.preload:
+            self._load_images(np.arange(len(self)))
+
+    def get_bbox(self, index, bboxlabel):
+        meta_data = self.meta_data.loc[os.path.basename(index)]
+        if isinstance(meta_data, pd.DataFrame):
+            meta_data = meta_data[meta_data["Finding Label"] == bboxlabel]
+            assert len(meta_data) == 1
+            meta_data = meta_data.iloc[0]  # to series
+        meta_data = meta_data[["bbox_h", "bbox_w", "bbox_x", "bbox_y"]]
+        return meta_data
 
 

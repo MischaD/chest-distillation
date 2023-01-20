@@ -39,6 +39,10 @@ class FOBADataset(Dataset):
     def set_transform(self, func):
         self._transform = func
 
+    @property
+    def image_list(self):
+        return os.path.join(self.base_dir, "images.txt")
+
     def __len__(self):
         return len(self.data)
 
