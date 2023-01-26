@@ -128,3 +128,74 @@ class ChestXray14BboxDataset(ChestXray14Dataset):
         # series
         return meta_data
 
+class MimicCXRDataset(FOBADataset):
+    def __init__(self, opt, H, W, mask_dir=None):
+        super().__init__(opt, H, W, mask_dir)
+        self._meta_data = None
+        self._build_dataset()
+        self.opt = opt
+
+    @property
+    def meta_data_path(self):
+        return os.path.join(self.base_dir, "train_pa_only_refactored_impressions_limited_nofindings.csv")
+
+    @property
+    def meta_data(self):
+        if self._meta_data is None:
+            logger.info(f"Loading image list from {self.meta_data_path}")
+            self._meta_data = pd.read_csv(self.meta_data_path, index_col="dicom_id")
+            return self._meta_data
+        else:
+            return self._meta_data
+
+    def _build_dataset(self):
+        data = [dict(rel_path=os.path.join("images", img_path), img_path=os.path.join(self.base_dir, "images", img_path), label=label) for img_path, label in zip(list(self.meta_data.index), list(self.meta_data["Finding Labels"]))]
+        splits = self.meta_data["split"].astype(int)
+        self._get_split(data, splits)
+
+        if self.shuffle:
+            np.random.seed(42)
+            np.random.shuffle(self.data)
+
+        if self.limit_dataset is not None:
+            self.data = self.data[self.limit_dataset[0]:min(self.limit_dataset[1], len(self.data))]
+
+        if self.preload:
+            self._load_images(np.arange(len(self)))
+
+
+    def _load_images(self, index):
+        assert len(index)
+        entry = self.data[index[0]].copy()
+        img = path_to_tensor(entry["img_path"])
+
+        # images too large are resized to self.W^2
+        if max(img.size()) > self.W:
+            img = resize(img, tosize=self.W)
+        entry["img"] = img
+
+        x = torch.full((1, 3, self.H, self.W), -1.)
+        x[0, :, :img.size()[2], :img.size()[3]] = img
+
+        entry["x"] = x
+        entry["slice"] = (slice(None), slice(None), slice(0, img.size()[2]), slice(0, img.size()[3]))
+
+        entry["prompt"] = "final report examination chest " + entry["label"].replace("|", " ")
+
+        if self._preliminary_masks_path is not None:
+            entry["preliminary_mask"] = torch.load(os.path.join(self._preliminary_masks_path, entry["rel_path"] + ".pt"))
+            if not self.latent_attention_mask:
+                entry["preliminary_mask"] = repeat(entry["preliminary_mask"], "1 1 c h w -> 1 1 c (h h2) (w w2)", h2=self.opt.f, w2=self.opt.f)
+
+        if self._inpainted_images_path is not None:
+            entry["inpainted_image"] = torch.load(os.path.join(self._inpainted_images_path, entry["rel_path"] + ".pt"))
+
+        tmp_mask_path = os.path.join(self.base_dir, "refined_mask_tmp", entry["rel_path"] + ".pt")
+        if os.path.isfile(tmp_mask_path):
+            entry["refined_mask"] = torch.load(tmp_mask_path)
+            if max(entry["refined_mask"].size()) > self.W:
+                assert False, "reimplement this"
+
+        entry["bbox"] = self.get_bbox(entry["rel_path"], bboxlabel=entry["bboxlabel"])
+        return entry
+

@@ -17,6 +17,12 @@ def get_compute_mask_args():
     parser.add_argument("--out_dir", type=str)
     return parser.parse_args()
 
+def get_train_args():
+    parser = argparse.ArgumentParser(description="Compute Masks")
+    parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
+    parser.add_argument("--out_dir", type=str)
+    return parser.parse_args()
+
 def get_train_segmentation_refined():
     parser = argparse.ArgumentParser(description="Compute Unet Refined")
     parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
@@ -89,8 +95,8 @@ def resize_long_edge(img, size_long_edge):
     return resizer(img)[..., :size_long_edge, :size_long_edge]
 
 
-SPLIT_TO_DATASETSPLIT = {0:DatasetSplit("test"), 1:DatasetSplit("train"), 2:DatasetSplit("val")}
-DATASETSPLIT_TO_SPLIT = {"test":0, "train":1, "val":2}
+SPLIT_TO_DATASETSPLIT = {0:DatasetSplit("test"), 1:DatasetSplit("train"), 2:DatasetSplit("val")} #p19 - 3
+DATASETSPLIT_TO_SPLIT = {"test":0, "train":1, "val":2}#p19 - 3
 
 
 def load_model_from_config(config, ckpt, verbose=False):
