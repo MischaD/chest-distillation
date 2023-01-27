@@ -20,7 +20,7 @@ def get_compute_mask_args():
 def get_train_args():
     parser = argparse.ArgumentParser(description="Compute Masks")
     parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
-    parser.add_argument("--out_dir", type=str)
+    parser.add_argument("EXP_NAME", type=str, help="Path to Experiment results")
     return parser.parse_args()
 
 def get_train_segmentation_refined():

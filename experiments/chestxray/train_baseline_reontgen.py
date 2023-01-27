@@ -2,13 +2,15 @@ from utils import DatasetSplit, get_tok_idx
 import os
 from src.preliminary_masks import AttentionExtractor
 
+debug = True
+
 root = "/vol/ideadata/ed52egek"
 data_dir = os.path.join(root, "data/mimic/jpg/physionet.org/files/mimic-cxr-jpg/2.0.0/") # data
 work_dir = os.path.join(root, "pycharm/chest-distillation") # code, config
 ckpt = os.path.join(root, "diffusionmodels/latentdiffusion/v2-1_512-ema-pruned.ckpt")
 ckpt_ft = os.path.join(root, "diffusionmodels/models_finetuned/chest/chest_finetuned.ckpt")
 
-config_path = os.path.join(work_dir, "experiments/chestxray/configs/v2-inference.yaml")
+config_path = os.path.join(work_dir, "experiments/chestxray/configs/v2-chest-training.yaml")
 out_dir = os.path.join(data_dir, "preliminary_masks/", "chestxrayofpleuraleffusion")
 
 latent_attention_masks = False

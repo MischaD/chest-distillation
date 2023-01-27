@@ -13,15 +13,10 @@ formatter = logging.Formatter('%(asctime)s | %(filename)s-%(funcName)s-%(lineno)
 log_dir = "./log/" + datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
 os.makedirs(log_dir, exist_ok=True)
 
-file_handler = logging.FileHandler(os.path.join(log_dir,'console.log'))
-file_handler.setLevel(logging.DEBUG)
-file_handler.setFormatter(formatter)
-
 stdout_handler = logging.StreamHandler(sys.stdout)
 stdout_handler.setLevel(logging.INFO)
 stdout_handler.setFormatter(formatter)
 
-logger.addHandler(file_handler)
 logger.addHandler(stdout_handler)
 
 def log_experiment(_logger, args, config_path):
