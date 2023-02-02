@@ -7,6 +7,7 @@ import numpy as np
 from einops import rearrange
 from scipy import ndimage
 import torchvision
+import matplotlib.pyplot as plt
 
 
 def get_compute_mask_args():
@@ -80,6 +81,8 @@ class DatasetSplit(Enum):
     train="train"
     test="test"
     val="val"
+    mscxr="mscxr"
+    p19="p19"
     all="all"
 
 def resize_long_edge(img, size_long_edge):
@@ -95,8 +98,8 @@ def resize_long_edge(img, size_long_edge):
     return resizer(img)[..., :size_long_edge, :size_long_edge]
 
 
-SPLIT_TO_DATASETSPLIT = {0:DatasetSplit("test"), 1:DatasetSplit("train"), 2:DatasetSplit("val"), 3:DatasetSplit("all"), 4:DatasetSplit("all")} #p19 - 3
-DATASETSPLIT_TO_SPLIT = {"test":0, "train":1, "val":2}#p19 - 3
+SPLIT_TO_DATASETSPLIT = {0:DatasetSplit("test"), 1:DatasetSplit("train"), 2:DatasetSplit("val"), 3:DatasetSplit("p19"), 4:DatasetSplit("mscxr")} #p19 - 3
+DATASETSPLIT_TO_SPLIT = {"test":0, "train":1, "val":2, "p19":3, "mscxr":4}#p19 - 3
 
 
 def load_model_from_config(config, ckpt, verbose=False):
@@ -172,3 +175,22 @@ def collate_batch(batch):
 
 def prompts_from_file():
     pass
+
+def viz_array(x):
+    # 1 x c x h x w
+    # c x h x w
+    # h x w x c
+    from einops import rearrange
+    import matplotlib.pyplot as plt
+    x = torch.Tensor(x)
+    x = x.squeeze()
+    x = x.detach().cpu()
+    x = (x - x.min()) / (x.max() - x.min())
+    if x.ndim == 3:
+        if x.size()[-1] != 3:
+            x = rearrange(x, "c h w -> h w c")
+        plt.imshow(x)
+    else:
+        #ndim == 2
+        plt.imshow(x, cmap="Greys_r")
+    plt.show()
