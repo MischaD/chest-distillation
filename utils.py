@@ -182,7 +182,8 @@ def viz_array(x):
     # h x w x c
     from einops import rearrange
     import matplotlib.pyplot as plt
-    x = torch.Tensor(x)
+    if not isinstance(x, torch.Tensor):
+        x = torch.Tensor(x)
     x = x.squeeze()
     x = x.detach().cpu()
     x = (x - x.min()) / (x.max() - x.min())

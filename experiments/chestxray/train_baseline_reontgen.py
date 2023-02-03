@@ -14,29 +14,26 @@ config_path = os.path.join(work_dir, "experiments/chestxray/configs/v2-chest-tra
 out_dir = os.path.join(data_dir, "preliminary_masks/", "chestxrayofpleuraleffusion")
 
 latent_attention_masks = False
-dataset = "chestxraymimic"
-dataset_args = dict() # will be overwritten during execution to contain our split
 dataset_args_train = dict(
+    dataset="chestxraymimic",
     base_dir=data_dir,
     split=DatasetSplit("train"),
-    limit_dataset=[0, 10],
+    #limit_dataset=[90094, 100000],
+    preload=True,
 )
 dataset_args_val = dict(
+    dataset="chestxraymimicbbox",
     base_dir=data_dir,
-    split=DatasetSplit("val"),
-    limit_dataset=[0, 10],
-)
-dataset_args_test = dict(
-    base_dir=data_dir,
-    split=DatasetSplit("test"),
-    limit_dataset=[0, 10],
+    split=DatasetSplit("mscxr"),
+    limit_dataset=[0, 4],
+    preload=True,
 )
 
 # dataset
 C=4 # latent channels
-H=1024
-W=1024
-f=16
+H=512
+W=512
+f=8
 
 # stable diffusion args
 seed=4200
@@ -49,3 +46,5 @@ synthesis_steps = 75
 # dataloading
 batch_size=4
 num_workers=1
+
+precompute_latent_training_data=True

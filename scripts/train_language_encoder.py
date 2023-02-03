@@ -24,6 +24,7 @@ from src.datasets import get_dataset
 from utils import get_train_args, make_exp_config, load_model_from_config, collate_batch, img_to_viz, instantiate_from_config
 from log import logger, log_experiment
 from log import formatter as log_formatter
+from tqdm import tqdm
 import logging
 
 
@@ -61,7 +62,7 @@ def get_model_checkpoint_config(ckptdir, **kwargs):
     return default_modelckpt_cfg
 
 
-class DataModuleFromConfig(pl.LightningDataModule):
+class MimicDataModule(pl.LightningDataModule):
     def __init__(self, batch_size, train=None, validation=None, test=None, predict=None,
                  num_workers=None, shuffle_test_loader=False, use_worker_init_fn=False,
                  shuffle_val_dataloader=False, num_val_workers=None):
@@ -88,8 +89,6 @@ class DataModuleFromConfig(pl.LightningDataModule):
             self.datasets["predict"] = predict
             self.predict_dataloader = self._predict_dataloader
 
-    def preload(self):
-        pass
 
     def _train_dataloader(self):
         return DataLoader(self.datasets["train"], batch_size=self.batch_size,
@@ -300,6 +299,7 @@ def main(opt):
     ckptdir = os.path.join(opt.log_dir, "checkpoints")
     cfgdir = os.path.join(opt.log_dir, "configs")
     seed_everything(opt.seed)
+    val_dataset = get_dataset(opt, "val")
 
     ckpt = opt.ckpt
 
@@ -318,6 +318,12 @@ def main(opt):
 
     device = torch.device("cuda")
     model = model.to(device)
+    train_dataset = get_dataset(opt, "train")
+
+    train_dataset.load_precomputed(model)
+    val_dataset.load_precomputed(model)
+
+    val_dataset[0]
 
     if not ckpt == "":
         print(f"Attempting to load state from {ckpt}")
@@ -393,99 +399,57 @@ def main(opt):
         batch_size=opt.batch_size,
         train=train_dataset,
         validation=val_dataset,
-        num_workers=4,
+        num_workers=opt.num_workers,
         num_val_workers=0,
     )
-
-    dataset.preload()
 
     logger.info(f"Length of train dataset: {len(train_dataset)}")
     trainer.fit(model, dataset)
 
 
-
 class DataModuleFromConfig(pl.LightningDataModule):
     def __init__(self, batch_size, train=None, validation=None, test=None, predict=None,
-                 wrap=False, num_workers=None, shuffle_test_loader=False, use_worker_init_fn=False,
+                 wrap=False, num_workers=None, shuffle_test_loader=False,
                  shuffle_val_dataloader=False, num_val_workers=None):
         super().__init__()
         self.batch_size = batch_size
-        self.dataset_configs = dict()
         self.num_workers = 0 #num_workers if num_workers is not None else batch_size * 2
         if num_val_workers is None:
             self.num_val_workers = self.num_workers
         else:
             self.num_val_workers = num_val_workers
-        self.use_worker_init_fn = use_worker_init_fn
         if train is not None: # train 'target' hf_dataset
-            self.dataset_configs["train"] = train
+            self.datasets["train"] = train
             self.train_dataloader = self._train_dataloader
         if validation is not None:
-            self.dataset_configs["validation"] = validation
+            self.datasets["validation"] = validation
             self.val_dataloader = partial(self._val_dataloader, shuffle=shuffle_val_dataloader)
         if test is not None:
-            self.dataset_configs["test"] = test
+            self.dataseto["test"] = test
             self.test_dataloader = partial(self._test_dataloader, shuffle=shuffle_test_loader)
         if predict is not None:
-            self.dataset_configs["predict"] = predict
+            self.dataset["predict"] = predict
             self.predict_dataloader = self._predict_dataloader
         self.wrap = wrap
 
-    def prepare_data(self):
-        for data_cfg in self.dataset_configs.values():
-            instantiate_from_config(data_cfg)
-
-    def setup(self, stage=None):
-        self.datasets = dict(
-            (k, instantiate_from_config(self.dataset_configs[k]))
-            for k in self.dataset_configs)
-        if self.wrap:
-            for k in self.datasets:
-                self.datasets[k] = WrappedDataset(self.datasets[k])
-
     def _train_dataloader(self):
-        is_iterable_dataset = isinstance(self.datasets['train'], Txt2ImgIterableBaseDataset)
-        if is_iterable_dataset or self.use_worker_init_fn:
-            init_fn = worker_init_fn
-        else:
-            init_fn = None
         return DataLoader(self.datasets["train"], batch_size=self.batch_size,
-                          num_workers=self.num_workers, shuffle=False if is_iterable_dataset else True,
-                          worker_init_fn=init_fn)
+                          num_workers=self.num_workers, shuffle=True)
 
     def _val_dataloader(self, shuffle=False):
-        if isinstance(self.datasets['validation'], Txt2ImgIterableBaseDataset) or self.use_worker_init_fn:
-            init_fn = worker_init_fn
-        else:
-            init_fn = None
         return DataLoader(self.datasets["validation"],
                           batch_size=self.batch_size,
                           num_workers=self.num_val_workers,
-                          worker_init_fn=init_fn,
                           shuffle=shuffle)
 
     def _test_dataloader(self, shuffle=False):
-        is_iterable_dataset = isinstance(self.datasets['train'], Txt2ImgIterableBaseDataset)
-        if is_iterable_dataset or self.use_worker_init_fn:
-            init_fn = worker_init_fn
-        else:
-            init_fn = None
-
-        # do not shuffle dataloader for iterable dataset
-        shuffle = shuffle and (not is_iterable_dataset)
-
         return DataLoader(self.datasets["test"], batch_size=self.batch_size,
-                          num_workers=self.num_workers, worker_init_fn=init_fn, shuffle=shuffle)
+                          num_workers=self.num_workers, shuffle=shuffle)
 
     def _predict_dataloader(self, shuffle=False):
-        if isinstance(self.datasets['predict'], Txt2ImgIterableBaseDataset) or self.use_worker_init_fn:
-            init_fn = worker_init_fn
-        else:
-            init_fn = None
         return DataLoader(self.datasets["predict"], batch_size=self.batch_size,
-                          num_workers=self.num_workers, worker_init_fn=init_fn)
-
-#class LatentDataset():
+                          shuffle=shuffle,
+                          num_workers=self.num_workers)
 
 
 if __name__ == '__main__':

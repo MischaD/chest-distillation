@@ -16,17 +16,17 @@ from log import logger
 
 
 class FOBADataset(Dataset):
-    def __init__(self, opt, H, W, mask_dir=None):
+    def __init__(self, dataset_args, opt):
         self.opt = opt
-        self.base_dir = opt.dataset_args["base_dir"]
+        self.base_dir = dataset_args["base_dir"]
         self.load_segmentations = False
-        self.split = opt.dataset_args["split"]
-        self.H = H
-        self.W = W
+        self.split = dataset_args["split"]
+        self.H = opt.H
+        self.W = opt.W
 
-        self.preload = opt.dataset_args.get("preload", False)
-        self.limit_dataset = opt.dataset_args.get("limit_dataset", None)
-        self.shuffle = opt.dataset_args.get("shuffle", False)
+        self.preload_deprecated = dataset_args.get("preload", False)
+        self.limit_dataset = dataset_args.get("limit_dataset", None)
+        self.shuffle = dataset_args.get("shuffle", False)
 
         self._data = None
         self._preliminary_masks_path = None
@@ -51,9 +51,13 @@ class FOBADataset(Dataset):
         :param item: idx
         :return:
         """
-        if not self.preload:
-            return self._transform(self._load_images([item]))
-        return self._transform(self.data[item])
+        if hasattr(self, "is_precomputed"):
+            try:
+                ret = self._data[item]
+            except TypeError:
+                raise TypeError("NoneType object is non subscriptable - did you call load_precomputed?")
+            return ret
+        return self._load_images([item])
 
     def _build_dataset(self):
         image_paths, splits = [], []
@@ -80,8 +84,6 @@ class FOBADataset(Dataset):
         if self.limit_dataset is not None:
             self.data = self.data[self.limit_dataset[0]:min(self.limit_dataset[1], len(self.data))]
 
-        if self.preload:
-            self._load_images(np.arange(len(self)))
 
     def _get_split(self, data, splits):
         """Creates split for data"""
