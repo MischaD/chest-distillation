@@ -318,13 +318,7 @@ def main(opt):
     device = torch.device("cuda")
     model = model.to(device)
 
-    train_dataset = get_dataset(opt, "train")
-    train_dataset.load_precomputed(model)
 
-    val_dataset = get_dataset(opt, "val")
-    val_dataset.load_precomputed(model)
-
-    val_dataset[0]
 
     if not ckpt == "":
         print(f"Attempting to load state from {ckpt}")
@@ -339,7 +333,6 @@ def main(opt):
         if len(u) > 0:
             print("unexpected keys:")
             print(u)
-
 
     trainer_kwargs = {}
     logger_cfg = get_trainer_logger(name=os.path.basename(log_dir),
@@ -396,6 +389,9 @@ def main(opt):
     train_dataset = get_dataset(opt, "train")
     val_dataset = get_dataset(opt, "val")
 
+    train_dataset.load_precomputed(model)
+    val_dataset.load_precomputed(model)
+
     dataset = DataModuleFromConfig(
         batch_size=opt.batch_size,
         train=train_dataset,
@@ -415,6 +411,7 @@ class DataModuleFromConfig(pl.LightningDataModule):
         super().__init__()
         self.batch_size = batch_size
         self.num_workers = 0 #num_workers if num_workers is not None else batch_size * 2
+        self.datasets = {}
         if num_val_workers is None:
             self.num_val_workers = self.num_workers
         else:
