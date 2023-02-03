@@ -18,14 +18,14 @@ dataset_args_train = dict(
     dataset="chestxraymimic",
     base_dir=data_dir,
     split=DatasetSplit("train"),
-    #limit_dataset=[90094, 100000],
+    limit_dataset=[0, 10],
     preload=True,
 )
 dataset_args_val = dict(
     dataset="chestxraymimicbbox",
     base_dir=data_dir,
     split=DatasetSplit("mscxr"),
-    limit_dataset=[0, 4],
+    limit_dataset=[0, 10],
     preload=True,
 )
 

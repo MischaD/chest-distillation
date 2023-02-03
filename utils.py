@@ -184,6 +184,7 @@ def viz_array(x):
     import matplotlib.pyplot as plt
     if not isinstance(x, torch.Tensor):
         x = torch.Tensor(x)
+    x = x.float()
     x = x.squeeze()
     x = x.detach().cpu()
     x = (x - x.min()) / (x.max() - x.min())

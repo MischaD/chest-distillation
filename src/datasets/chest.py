@@ -257,32 +257,64 @@ class MimicCXRDataset(FOBADataset):
         if self.limit_dataset is not None:
             self.data = self.data[self.limit_dataset[0]:min(self.limit_dataset[1], len(self.data))]
 
-
-    def _load_images(self, index):
-        assert len(index)
-        entry = self.data[index[0]].copy()
-        img_path = os.path.join(self.base_dir, entry["rel_path"].replace(".dcm", ".jpg"))
+    def _load_image(self, img_path):
         img = path_to_tensor(img_path)
-
         # images too large are resized to self.W^2 using center cropping
         if max(img.size()) > self.W:
             transforms = Compose([Resize(self.W), CenterCrop(self.W)])
             img = transforms(img)
+        return img
 
+    def _load_images(self, index):
+        assert len(index)
+        entry = self.data[index[0]].copy()
         entry["dicom_id"] = os.path.basename(entry["rel_path"]).rstrip(".jpg")
-        entry["img"] = img
-        entry["impression"] = self._meta_data.loc[entry["dicom_id"]]["impression"]
+        img_path = os.path.join(self.base_dir, entry["rel_path"].replace(".dcm", ".jpg"))
+        entry["img"] = self._load_image(img_path)
+        entry["impression"] = self.meta_data.loc[entry["dicom_id"]]["impression"]
         return entry
 
 
 class MimicCXRDatasetMSBBOX(MimicCXRDataset):
     def __init__(self, dataset_args, opt):
-        super().__init__(dataset_args, opt)
+        self._bbox_meta_data = None
         assert dataset_args["split"] == DatasetSplit("mscxr")
-        self._bbox_meta_data = pd.read_csv(os.path.join(self.base_dir, "MS_CXR_Local_Alignment_v1.0.0.csv"), index_col="dicom_id")
+        super().__init__(dataset_args, opt)
+
+    @property
+    def bbox_meta_data(self):
+        return pd.read_csv(os.path.join(self.base_dir, "mimic_sccxr_preprocessed.csv"), index_col="dicom_id")
+
+    def _build_dataset(self):
+        data = [dict(rel_path=os.path.join(img_path.replace(".dcm", ".jpg")), finding_labels=labels) for img_path, labels in zip(list(self.bbox_meta_data.paths), list(self.bbox_meta_data["category_name"]))]
+        self.data = data
+        if self.shuffle:
+            np.random.shuffle(self.data)
+
+        if self.limit_dataset is not None:
+            self.data = self.data[self.limit_dataset[0]:min(self.limit_dataset[1], len(self.data))]
 
     def _load_images(self, index):
-        entry = super()._load_images(index)
-        entry["bbox"] = [-1, -1, -1, -1]
-        #entry["bbox"] =
+        assert len(index)
+        entry = self.data[index[0]].copy()
+        entry["dicom_id"] = os.path.basename(entry["rel_path"]).rstrip(".jpg")
+        entry["img"] = self._load_image(os.path.join(self.base_dir, entry["rel_path"].replace(".dcm", ".jpg")))
+
+        meta_data_entry = self.bbox_meta_data.loc[entry["dicom_id"]]
+        image_width, image_height = meta_data_entry[["image_width", "image_height"]]
+        bboxes = meta_data_entry["bboxxywh"].split("|")
+        bbox_img = torch.zeros((image_height, image_width), dtype=bool)
+
+        for bbox in bboxes:
+            bbox = bbox.split("-")
+            bbox = tuple(map(lambda y: int(y), bbox))
+            x, y, w, h = bbox
+            bbox_img[y: (y + h), x:(x + w)] = True
+
+        if max(bbox_img.size()) > self.W:
+            transforms = Compose([Resize(self.W), CenterCrop(self.W)])
+            bbox_img = transforms(bbox_img.unsqueeze(dim=0)).squeeze()
+
+        entry["bbox_img"] = bbox_img
+        entry["bboxxywh"] = meta_data_entry["bboxxywh"]
         return entry

@@ -299,7 +299,6 @@ def main(opt):
     ckptdir = os.path.join(opt.log_dir, "checkpoints")
     cfgdir = os.path.join(opt.log_dir, "configs")
     seed_everything(opt.seed)
-    val_dataset = get_dataset(opt, "val")
 
     ckpt = opt.ckpt
 
@@ -318,9 +317,11 @@ def main(opt):
 
     device = torch.device("cuda")
     model = model.to(device)
-    train_dataset = get_dataset(opt, "train")
 
+    train_dataset = get_dataset(opt, "train")
     train_dataset.load_precomputed(model)
+
+    val_dataset = get_dataset(opt, "val")
     val_dataset.load_precomputed(model)
 
     val_dataset[0]
