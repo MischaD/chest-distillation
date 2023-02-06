@@ -10,9 +10,6 @@ logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s | %(filename)s-%(funcName)s-%(lineno)04d | %(levelname)s | %(message)s')
 
-log_dir = "./log/" + datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-os.makedirs(log_dir, exist_ok=True)
-
 stdout_handler = logging.StreamHandler(sys.stdout)
 stdout_handler.setLevel(logging.INFO)
 stdout_handler.setFormatter(formatter)

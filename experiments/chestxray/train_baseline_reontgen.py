@@ -26,7 +26,8 @@ dataset_args_val = dict(
     dataset="chestxraymimicbbox",
     base_dir=data_dir,
     split=DatasetSplit("mscxr"),
-    limit_dataset=[0, 10], #c0a08655ac43528158bef787cbfa549c447665df
+    limit_dataset=[0, 4], #213851912adf554689226fff69183d41d96f6d44
+    #limit_dataset=[0, 10], #c0a08655ac43528158bef787cbfa549c447665df
     preload=True,
 )
 

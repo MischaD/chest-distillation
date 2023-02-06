@@ -317,4 +317,5 @@ class MimicCXRDatasetMSBBOX(MimicCXRDataset):
 
         entry["bbox_img"] = bbox_img
         entry["bboxxywh"] = meta_data_entry["bboxxywh"]
+        entry["label_text"] = meta_data_entry["label_text"]
         return entry

@@ -7,6 +7,7 @@ https://github.com/CompVis/taming-transformers
 """
 
 import torch
+import random
 import torch.nn as nn
 import numpy as np
 import pytorch_lightning as pl
@@ -418,13 +419,16 @@ class DDPM(pl.LightningModule):
         x = batch[k]
         if len(x.shape) == 3:
             x = x[..., None]
-        x = rearrange(x, 'b h w c -> b c h w')
+        if len(x.shape) == 4:
+            x = rearrange(x, 'b h w c -> b c h w')
+        if len(x.shape) == 5:
+            x = x.squeeze()
         x = x.to(memory_format=torch.contiguous_format).float()
         return x
 
-    def shared_step(self, batch):
+    def shared_step(self, batch, cond_key):
         x = self.get_input(batch, self.first_stage_key)
-        loss, loss_dict = self(x)
+        loss, loss_dict = self(x, cond_key=cond_key)
         return loss, loss_dict
 
     def training_step(self, batch, batch_idx):
@@ -437,7 +441,7 @@ class DDPM(pl.LightningModule):
                 if self.ucg_prng.choice(2, p=[1 - p, p]):
                     batch[k][i] = val
 
-        loss, loss_dict = self.shared_step(batch)
+        loss, loss_dict = self.shared_step(batch, cond_key="impression")
 
         self.log_dict(loss_dict, prog_bar=True,
                       logger=True, on_step=True, on_epoch=True)
@@ -453,9 +457,9 @@ class DDPM(pl.LightningModule):
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
-        _, loss_dict_no_ema = self.shared_step(batch)
+        _, loss_dict_no_ema = self.shared_step(batch, cond_key="label_text")
         with self.ema_scope():
-            _, loss_dict_ema = self.shared_step(batch)
+            _, loss_dict_ema = self.shared_step(batch, cond_key="label_text")
             loss_dict_ema = {key + '_ema': loss_dict_ema[key] for key in loss_dict_ema}
         self.log_dict(loss_dict_no_ema, prog_bar=False, logger=True, on_step=False, on_epoch=True)
         self.log_dict(loss_dict_ema, prog_bar=False, logger=True, on_step=False, on_epoch=True)
@@ -637,6 +641,7 @@ class LatentDiffusion(DDPM):
             assert config != '__is_unconditional__'
             model = instantiate_from_config(config)
             self.cond_stage_model = model
+        #self.cond_stage_model.to("cuda")
 
     def _get_denoise_row_from_list(self, samples, desc='', force_no_decoder_quantization=False):
         denoise_row = []
@@ -768,21 +773,26 @@ class LatentDiffusion(DDPM):
         if bs is not None:
             x = x[:bs]
         x = x.to(self.device)
-        encoder_posterior = self.encode_first_stage(x)
+        if x.size()[1] != 8:
+            encoder_posterior = self.encode_first_stage(x)
+        elif x.size()[1] == 4:
+            encoder_posterior = x
+        else:
+            encoder_posterior = DiagonalGaussianDistribution(x)
+
         z = self.get_first_stage_encoding(encoder_posterior).detach()
 
         if self.model.conditioning_key is not None and not self.force_null_conditioning:
-            if cond_key is None:
+            if cond_key is None: # different e.g. during validation
                 cond_key = self.cond_stage_key
             if cond_key != self.first_stage_key:
-                if cond_key in ['caption', 'coordinates_bbox', "txt"]:
+                if cond_key in ["impression"]:
                     xc = batch[cond_key]
-                elif cond_key in ['class_label', 'cls']:
-                    xc = batch
+                elif cond_key in ["label_text"]:
+                    assert isinstance(batch[cond_key], list)
+                    xc = [random.choice(x.split("|")) for x in batch[cond_key]]
                 else:
                     xc = super().get_input(batch, cond_key).to(self.device)
-            else:
-                xc = x
             if not self.cond_stage_trainable or force_c_encode:
                 if isinstance(xc, dict) or isinstance(xc, list):
                     c = self.get_learned_conditioning(xc)
@@ -830,7 +840,7 @@ class LatentDiffusion(DDPM):
         return self.first_stage_model.encode(x)
 
     def shared_step(self, batch, **kwargs):
-        x, c = self.get_input(batch, self.first_stage_key)
+        x, c = self.get_input(batch, self.first_stage_key, cond_key=kwargs.pop("cond_key"))
         loss = self(x, c)
         return loss
 
