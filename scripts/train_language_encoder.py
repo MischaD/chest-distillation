@@ -146,13 +146,14 @@ class SetupCallback(Callback):
         else:
             # ModelCheckpoint callback created log directory --- remove it
             if not MULTINODE_HACKS and not self.resume and os.path.exists(self.logdir):
-                dst, name = os.path.split(self.logdir)
-                dst = os.path.join(dst, "child_runs", name)
-                os.makedirs(os.path.split(dst)[0], exist_ok=True)
-                try:
-                    os.rename(self.logdir, dst)
-                except FileNotFoundError:
-                    pass
+                pass
+                #dst, name = os.path.split(self.logdir)
+                #dst = os.path.join(dst, "child_runs", name)
+                #os.makedirs(os.path.split(dst)[0], exist_ok=True)
+                #try:
+                #    os.rename(self.logdir, dst)
+                #except FileNotFoundError:
+                #    pass
 
 
 class ImageLogger(Callback):
@@ -246,6 +247,48 @@ class ImageLogger(Callback):
             if is_train:
                 pl_module.train()
 
+    def log_attention_map(self, pl_module, batch, batch_idx, split="train"):
+        check_idx = batch_idx if self.log_on_batch_idx else pl_module.global_step
+        if self.log_all_val and split == "val":
+            should_log = True
+        else:
+            should_log = self.check_frequency(check_idx)
+        if (should_log and  # batch_idx % self.batch_freq == 0
+                hasattr(pl_module, "log_images") and
+                callable(pl_module.log_images) and
+                self.max_images > 0):
+            logger = type(pl_module.logger)
+
+            is_train = pl_module.training
+            if is_train:
+                pl_module.eval()
+
+            with torch.no_grad():
+                self.log_images_kwargs["unconditional_guidance_scale"] = 1 # classifier free guidance
+                images = pl_module.log_images(batch, split=split, **self.log_images_kwargs)
+                #images = pl_module.log_images_with_attention(batch, split=split, **self.log_images_kwargs)
+
+            #log attention_maps here
+            for k in images:
+                N = min(images[k].shape[0], self.max_images)
+                images[k] = images[k][:N]
+                if isinstance(images[k], torch.Tensor):
+                    images[k] = images[k].detach().cpu()
+                    if self.clamp:
+                        images[k] = torch.clamp(images[k], -1., 1.)
+
+            images["masks"] = (repeat(batch["mask"][:, :3].cpu(), "b c h w -> b c (h h4) (w w4)", h4=8, w4=8).float() - 0.5) * 2
+
+            self.log_local(pl_module.logger.save_dir, split, images,
+                           pl_module.global_step, pl_module.current_epoch, batch_idx)
+
+            logger_log_images = self.logger_log_images.get(logger, lambda *args, **kwargs: None)
+            logger_log_images(pl_module, images, pl_module.global_step, split)
+
+            if is_train:
+                pl_module.train()
+        pass
+
     def check_frequency(self, check_idx):
         if ((check_idx % self.batch_freq) == 0 or (check_idx in self.log_steps)) and (
                 check_idx > 0 or self.log_first_step):
@@ -258,13 +301,16 @@ class ImageLogger(Callback):
         return False
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
-        if not self.disabled and (pl_module.global_step > 0 or self.log_first_step):
-            self.log_img(pl_module, batch, batch_idx, split="train")
+        #if not self.disabled and (pl_module.global_step > 0 or self.log_first_step):
+        #    self.log_img(pl_module, batch, batch_idx, split="train")
             #print(f"Skip logging image")
+        pass
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
         if not self.disabled and pl_module.global_step > 0:
             self.log_img(pl_module, batch, batch_idx, split="val")
+            self.log_attention_map(pl_module, batch, batch_idx, split="val")
+
         if hasattr(pl_module, 'calibrate_grad_norm'):
             if (pl_module.calibrate_grad_norm and batch_idx % 25 == 0) and batch_idx > 0:
                 self.log_gradients(trainer, pl_module, batch_idx=batch_idx)
@@ -311,14 +357,13 @@ def main(opt):
     lightning_config = config.pop("lightning", OmegaConf.create())
     trainer_config = lightning_config.get("trainer", OmegaConf.create())
     trainer_config["accelerator"] = "ddp"
+    trainer_config["strategy"] = "ddp"
+    trainer_config["devices"] = torch.cuda.device_count()
+    #num_nodes
     lightning_config.trainer = trainer_config
 
+
     model = load_model_from_config(config, f"{opt.ckpt}")
-
-    device = torch.device("cuda")
-    model = model.to(device)
-
-
 
     if not ckpt == "":
         print(f"Attempting to load state from {ckpt}")
@@ -376,7 +421,10 @@ def main(opt):
 
     )
     trainer_kwargs["callbacks"] = [setup_cb, image_logger, learning_rate_logger, cuda_callback, checkpoint_callback]
-
+    trainer_kwargs["accelerator"] = "gpu"
+    trainer_kwargs["strategy"] = "ddp"
+    trainer_kwargs["precision"] = 16
+    trainer_kwargs["devices"] = torch.cuda.device_count()
     trainer = Trainer(**trainer_kwargs)
     trainer.logdir = log_dir
 
@@ -423,10 +471,10 @@ class DataModuleFromConfig(pl.LightningDataModule):
             self.datasets["validation"] = validation
             self.val_dataloader = partial(self._val_dataloader, shuffle=shuffle_val_dataloader)
         if test is not None:
-            self.dataseto["test"] = test
+            self.datasets["test"] = test
             self.test_dataloader = partial(self._test_dataloader, shuffle=shuffle_test_loader)
         if predict is not None:
-            self.dataset["predict"] = predict
+            self.datasets["predict"] = predict
             self.predict_dataloader = self._predict_dataloader
         self.wrap = wrap
 
