@@ -58,7 +58,6 @@ class DDIMSampler(object):
                S,
                batch_size,
                shape,
-               t,
                conditioning=None,
                callback=None,
                normals_sequence=None,
@@ -104,7 +103,7 @@ class DDIMSampler(object):
         size = (batch_size, C, H, W)
         print(f'Data shape for DDIM sampling is {size}, eta {eta}')
 
-        samples, intermediates = self.ddim_sampling(conditioning, size, t,
+        samples, intermediates = self.ddim_sampling(conditioning, size,
                                                     callback=callback,
                                                     img_callback=img_callback,
                                                     quantize_denoised=quantize_x0,
@@ -126,7 +125,7 @@ class DDIMSampler(object):
 
 
     @torch.no_grad()
-    def ddim_sampling(self, cond, shape, t,
+    def ddim_sampling(self, cond, shape,
                       x_T=None, ddim_use_original_steps=False,
                       callback=None, timesteps=None, quantize_denoised=False,
                       mask=None, x0=None, img_callback=None, log_every_t=100,
@@ -140,23 +139,16 @@ class DDIMSampler(object):
         else:
             img = x_T
 
-        if timesteps is None:
-            timesteps = self.ddpm_num_timesteps if ddim_use_original_steps else self.ddim_timesteps
-        elif timesteps is not None and not ddim_use_original_steps:
-            subset_end = int(min(timesteps / self.ddim_timesteps.shape[0], 1) * self.ddim_timesteps.shape[0]) - 1
-            timesteps = self.ddim_timesteps[:subset_end]
-
         intermediates = {'x_inter': [img], 'pred_x0': [img], 'attention': []}
-
-        #iterator = tqdm(time_range, desc='DDIM Sampler', total=total_steps)
-
         time_range = np.flip(self.ddim_timesteps)
-        time_range = np.array([x for x in time_range if x <= t])
         time_range = repeat(time_range, "h -> (h h2)", h2=1)
         total_steps = len(time_range)
-        logger.info(f"Running DDIM Sampling with Time range: {time_range}")
+        logger.debug(f"Running DDIM Sampling with Time range: {time_range}")
 
-        for i, step in enumerate(time_range):
+        if save_attention:
+            self.model.model.diffusion_model.enable_attention_save_mode()
+
+        for i, step in tqdm(enumerate(time_range), desc="DDIM sampling"):
             index = total_steps - i - 1
             ts = torch.full((b,), step, device=device, dtype=torch.long)
 
@@ -168,8 +160,6 @@ class DDIMSampler(object):
             if ucg_schedule is not None:
                 assert len(ucg_schedule) == len(time_range)
                 unconditional_guidance_scale = ucg_schedule[i]
-            if save_attention:
-                self.model.model.diffusion_model.enable_attention_save_mode()
 
             outs = self.p_sample_ddim(img, cond, ts, index=index, use_original_steps=ddim_use_original_steps,
                                       quantize_denoised=quantize_denoised, temperature=temperature,
@@ -185,10 +175,10 @@ class DDIMSampler(object):
             if index % log_every_t == 0 or index == total_steps - 1:
                 intermediates['x_inter'].append(img)
                 intermediates['pred_x0'].append(pred_x0)
-                intermediates['attention'].append(self.model.model.diffusion_model.get_attention_map())
+            intermediates['attention'].append(self.model.model.diffusion_model.get_attention_map())
 
-            if save_attention:
-                self.model.model.diffusion_model.disable_attention_save_mode()
+        if save_attention:
+            self.model.model.diffusion_model.disable_attention_save_mode()
         return img, intermediates
 
     @torch.no_grad()

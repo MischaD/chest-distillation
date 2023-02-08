@@ -27,6 +27,7 @@ from src.ldm.modules.distributions.distributions import normal_kl, DiagonalGauss
 from src.ldm.models.autoencoder import IdentityFirstStage, AutoencoderKL
 from src.ldm.modules.diffusionmodules.util import make_beta_schedule, extract_into_tensor, noise_like
 from src.ldm.models.diffusion.ddim import DDIMSampler
+from src.preliminary_masks import preprocess_attention_maps
 
 
 __conditioning_keys__ = {'concat': 'c_concat',
@@ -441,7 +442,7 @@ class DDPM(pl.LightningModule):
                 if self.ucg_prng.choice(2, p=[1 - p, p]):
                     batch[k][i] = val
 
-        loss, loss_dict = self.shared_step(batch, cond_key="impression")
+        loss, loss_dict = self.shared_step(batch, cond_key=self.cond_stage_key)
 
         self.log_dict(loss_dict, prog_bar=True,
                       logger=True, on_step=True, on_epoch=True)
@@ -791,6 +792,7 @@ class LatentDiffusion(DDPM):
                 elif cond_key in ["label_text"]:
                     assert isinstance(batch[cond_key], list)
                     xc = [random.choice(x.split("|")) for x in batch[cond_key]]
+                    batch[cond_key] = xc
                 else:
                     xc = super().get_input(batch, cond_key).to(self.device)
             if not self.cond_stage_trainable or force_c_encode:
@@ -1167,7 +1169,8 @@ class LatentDiffusion(DDPM):
                                            return_first_stage_outputs=True,
                                            force_c_encode=True,
                                            return_original_cond=True,
-                                           bs=N)
+                                           bs=N,
+                                           cond_key=kwargs.get("cond_key"))
         N = min(x.shape[0], N)
         n_row = min(x.shape[0], n_row)
         log["inputs"] = x
@@ -1208,28 +1211,30 @@ class LatentDiffusion(DDPM):
             diffusion_grid = rearrange(diffusion_grid, 'b n c h w -> (b n) c h w')
             diffusion_grid = make_grid(diffusion_grid, nrow=diffusion_row.shape[0])
             log["diffusion_row"] = diffusion_grid
+        save_attention = kwargs.get("save_attention", False)
 
         if sample:
             # get denoise row
             with ema_scope("Sampling"):
-                samples, z_denoise_row = self.sample_log(cond=c, batch_size=N, ddim=use_ddim,
-                                                         ddim_steps=ddim_steps, eta=ddim_eta)
+                samples, intermediates = self.sample_log(cond=c, batch_size=N, ddim=use_ddim,
+                                                         ddim_steps=ddim_steps, x0=z[:N], eta=ddim_eta, save_attention=save_attention)
                 # samples, z_denoise_row = self.sample(cond=c, batch_size=N, return_intermediates=True)
             x_samples = self.decode_first_stage(samples)
             log["samples"] = x_samples
+            if save_attention:
+                log["attention"] = intermediates["attention"]
+
             if plot_denoise_rows:
-                denoise_grid = self._get_denoise_row_from_list(z_denoise_row)
+                denoise_grid = self._get_denoise_row_from_list(intermediates)
                 log["denoise_row"] = denoise_grid
 
             if quantize_denoised and not isinstance(self.first_stage_model, AutoencoderKL) and not isinstance(
                     self.first_stage_model, IdentityFirstStage):
                 # also display when quantizing x0 while sampling
                 with ema_scope("Plotting Quantized Denoised"):
-                    samples, z_denoise_row = self.sample_log(cond=c, batch_size=N, ddim=use_ddim,
+                    samples, intermediates = self.sample_log(cond=c, batch_size=N, ddim=use_ddim,
                                                              ddim_steps=ddim_steps, eta=ddim_eta,
                                                              quantize_denoised=True)
-                    # samples, z_denoise_row = self.sample(cond=c, batch_size=N, return_intermediates=True,
-                    #                                      quantize_denoised=True)
                 x_samples = self.decode_first_stage(samples.to(self.device))
                 log["samples_x0_quantized"] = x_samples
 
@@ -1249,38 +1254,34 @@ class LatentDiffusion(DDPM):
         if inpaint:
             # make a simple center square
             b, h, w = z.shape[0], z.shape[2], z.shape[3]
-            mask = torch.ones(N, h, w).to(self.device)
-            # zeros will be filled in
-            mask[:, h // 4:3 * h // 4, w // 4:3 * w // 4] = 0.
-            mask = mask[:, None, ...]
-            with ema_scope("Plotting Inpaint"):
-                samples, _ = self.sample_log(cond=c, batch_size=N, ddim=use_ddim, eta=ddim_eta,
+            if kwargs.get("mask"):
+                if isinstance(kwargs.get("mask"), float):
+                    mask = torch.full_like(z, kwargs.get("mask"))
+                else:
+                    mask = kwargs.get("mask")
+            else:
+                mask = torch.ones(N, h, w).to(self.device)
+                # zeros will be filled in
+                mask[:, h // 4:3 * h // 4, w // 4:3 * w // 4] = 0.
+                mask = mask[:, None, ...]
+            with ema_scope("Plotting"):
+                samples, intermediates = self.sample_log(cond=c, batch_size=N, ddim=use_ddim, eta=ddim_eta,
                                              ddim_steps=ddim_steps, x0=z[:N], mask=mask)
+            if save_attention:
+                log["attention"] = intermediates["attention"]
+
             x_samples = self.decode_first_stage(samples.to(self.device))
             log["samples_inpainting"] = x_samples
             log["mask"] = mask
 
             # outpaint
-            mask = 1. - mask
-            with ema_scope("Plotting Outpaint"):
-                samples, _ = self.sample_log(cond=c, batch_size=N, ddim=use_ddim, eta=ddim_eta,
-                                             ddim_steps=ddim_steps, x0=z[:N], mask=mask)
-            x_samples = self.decode_first_stage(samples.to(self.device))
-            log["samples_outpainting"] = x_samples
-
-        if plot_progressive_rows:
-            with ema_scope("Plotting Progressives"):
-                img, progressives = self.progressive_denoising(c,
-                                                               shape=(self.channels, self.image_size, self.image_size),
-                                                               batch_size=N)
-            prog_row = self._get_denoise_row_from_list(progressives, desc="Progressive Generation")
-            log["progressive_row"] = prog_row
-
-        if return_keys:
-            if np.intersect1d(list(log.keys()), return_keys).shape[0] == 0:
-                return log
-            else:
-                return {key: log[key] for key in return_keys}
+            if mask.min() < 1:
+                mask = 1. - mask
+                with ema_scope("Plotting Outpaint"):
+                    samples, _ = self.sample_log(cond=c, batch_size=N, ddim=use_ddim, eta=ddim_eta,
+                                                 ddim_steps=ddim_steps, x0=z[:N], mask=mask)
+                x_samples = self.decode_first_stage(samples.to(self.device))
+                log["samples_outpainting"] = x_samples
         return log
 
     def configure_optimizers(self):

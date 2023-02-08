@@ -165,6 +165,16 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
         for param in self.parameters():
             param.requires_grad = False
 
+    def compute_word_len(self, words):
+        if not isinstance(words, list):
+            words = list(words)
+        assert isinstance(words[0], str)
+        outs = open_clip.tokenize(words)
+        lens = []
+        for out in outs:
+            lens.append(int(sum(out != 0) - 2))
+        return lens
+
     def forward(self, text):
         tokens = open_clip.tokenize(text)
         z = self.encode_with_transformer(tokens.to(self.device))

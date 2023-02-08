@@ -165,7 +165,9 @@ def main(opt):
                   debug= opt.debug,
                   enable_multinode_hacks=MULTINODE_HACKS,
     )
+    from src.preliminary_masks import AttentionExtractor
     image_logger = instantiate_from_config(lightning_config["callbacks"]["image_logger"])
+    image_logger.set_attention_extractor(AttentionExtractor("all_token_mean", steps=int(opt.ddim_steps * 4/5), max_token=10))
     learning_rate_logger = LearningRateMonitor(logging_interval="step")
     cuda_callback = CUDACallback()
     checkpoint_callback = pl.callbacks.ModelCheckpoint(

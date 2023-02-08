@@ -8,10 +8,17 @@ import os
 from omegaconf import OmegaConf
 from PIL import Image
 from einops import repeat
+from torch import autocast
+
+from torchvision.utils import make_grid
+from torchvision.transforms import ToPILImage, ToTensor
+from einops import rearrange, repeat
+from PIL import ImageDraw
 
 from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.utilities.distributed import rank_zero_only
 from pytorch_lightning.utilities import rank_zero_info
+from src.preliminary_masks import preprocess_attention_maps
 
 
 
@@ -89,6 +96,7 @@ class ImageLogger(Callback):
         self.log_images_kwargs = log_images_kwargs if log_images_kwargs else {}
         self.log_first_step = log_first_step
         self.log_all_val = log_all_val
+        self.attention_extractor = None
 
     @rank_zero_only
     def _testtube(self, pl_module, images, batch_idx, split):
@@ -121,16 +129,12 @@ class ImageLogger(Callback):
             os.makedirs(os.path.split(path)[0], exist_ok=True)
             Image.fromarray(grid).save(path)
 
+    def set_attention_extractor(self, attention_extractor):
+        self.attention_extractor = attention_extractor
+
     def log_img(self, pl_module, batch, batch_idx, split="train"):
-        check_idx = batch_idx if self.log_on_batch_idx else pl_module.global_step
-        if self.log_all_val and split == "val":
-            should_log = True
-        else:
-            should_log = self.check_frequency(check_idx)
-        if (should_log and  # batch_idx % self.batch_freq == 0
-                hasattr(pl_module, "log_images") and
-                callable(pl_module.log_images) and
-                self.max_images > 0):
+        if (hasattr(pl_module, "log_images") and
+                callable(pl_module.log_images)):
             logger = type(pl_module.logger)
 
             is_train = pl_module.training
@@ -138,8 +142,35 @@ class ImageLogger(Callback):
                 pl_module.eval()
 
             with torch.no_grad():
-                self.log_images_kwargs["unconditional_guidance_scale"] = 1 # classifier free guidance
-                images = pl_module.log_images(batch, split=split, **self.log_images_kwargs)
+                with autocast("cuda"):
+                    images = pl_module.log_images(batch, split=split, **self.log_images_kwargs)
+                if images.get("attention") is not None:
+                    attention = images.pop("attention")
+                    attention_maps = []
+                    attention_images = preprocess_attention_maps(attention, on_cpu=True)
+                    #attention_images = torch.cat(attention_images, dim=1)
+                    for i in range(len(batch["img"])):  # batch
+                        attention_maps.append(self.attention_extractor(attention_images[i]))
+                    images["attention"] = attention_maps
+
+                    labeled_attention = []
+                    for i, attention in enumerate(images["attention"]):
+                        # 1 x 1 x tok_idx x 64 x 64
+                        assert len(attention.size()) == 5
+                        attention = attention.squeeze(dim=(0))
+
+                        attention = rearrange(repeat(attention, "1 b h w -> 3 b h w"), "c b h w -> b c h w")
+                        grid_img = make_grid(attention, nrow=len(attention), normalize=True)
+                        grid_img = ToPILImage()(grid_img)
+                        ImageDraw.Draw(grid_img).text(
+                            (0, 0),
+                            batch["label_text"][i],
+                            (255, 0, 0)
+                        )
+                        labeled_attention.append(ToTensor()(grid_img))
+                    labeled_attention = torch.stack(labeled_attention, dim=0)
+                    labeled_attention = (labeled_attention - 0.5) * 2
+                    images["attention"] = labeled_attention
 
             for k in images:
                 N = min(images[k].shape[0], self.max_images)
@@ -147,10 +178,11 @@ class ImageLogger(Callback):
                 if isinstance(images[k], torch.Tensor):
                     images[k] = images[k].detach().cpu()
                     if self.clamp:
-                        images[k] = torch.clamp(images[k], -1., 1.)
+                        images[k] = torch.clamp(images[k].to(float), -1., 1.)
 
-            images["masks"] = (repeat(batch["mask"][:, :3].cpu(), "b c h w -> b c (h h4) (w w4)", h4=8, w4=8).float() - 0.5) * 2
-
+            if images.get("inputs") is not None and images["inputs"].size()[-3] == 8:
+                # Gaussian - just ignore as input
+                images.pop("inputs")
             self.log_local(pl_module.logger.save_dir, split, images,
                            pl_module.global_step, pl_module.current_epoch, batch_idx)
 
@@ -160,47 +192,69 @@ class ImageLogger(Callback):
             if is_train:
                 pl_module.train()
 
-    def log_attention_map(self, pl_module, batch, batch_idx, split="train"):
-        check_idx = batch_idx if self.log_on_batch_idx else pl_module.global_step
-        if self.log_all_val and split == "val":
-            should_log = True
-        else:
-            should_log = self.check_frequency(check_idx)
-        if (should_log and  # batch_idx % self.batch_freq == 0
-                hasattr(pl_module, "log_images") and
-                callable(pl_module.log_images) and
-                self.max_images > 0):
-            logger = type(pl_module.logger)
+    def log_attention(self, pl_module, batch, batch_idx, split="train"):
+        logger = type(pl_module.logger)
 
-            is_train = pl_module.training
-            if is_train:
-                pl_module.eval()
+        is_train = pl_module.training
+        if is_train:
+            pl_module.eval()
 
-            with torch.no_grad():
-                self.log_images_kwargs["unconditional_guidance_scale"] = 1 # classifier free guidance
-                images = pl_module.log_images(batch, split=split, **self.log_images_kwargs)
-                #images = pl_module.log_images_with_attention(batch, split=split, **self.log_images_kwargs)
+        with torch.no_grad():
+            with autocast("cuda"):
+                images = pl_module.log_images(batch, split=split, sample=False, inpaint=True, plot_progressive_rows=False, plot_diffusion_rows=False, use_ema_scope=False, cond_key="label_text", mask=1., save_attention=True)
+                images.pop("inputs")
+                attention = images.pop("attention")
+                attention_maps = []
+                attention_images = preprocess_attention_maps(attention, on_cpu=True)
+                for i in range(len(batch["img"])):  # batch
+                    attention_maps.append(self.attention_extractor(attention_images[i]))
+                images["attention"] = attention_maps
 
-            #log attention_maps here
-            for k in images:
-                N = min(images[k].shape[0], self.max_images)
-                images[k] = images[k][:N]
-                if isinstance(images[k], torch.Tensor):
-                    images[k] = images[k].detach().cpu()
-                    if self.clamp:
-                        images[k] = torch.clamp(images[k], -1., 1.)
+                labeled_attention = []
+                for i, attention in enumerate(images["attention"]):
+                    # 1 x 1 x tok_idx x 64 x 64
+                    assert len(attention.size()) == 5
+                    attention = attention.squeeze(dim=(0))
+                    attention = rearrange(repeat(attention, "1 b h w -> 3 b h w"), "c b h w -> b c h w")
+                    grid_img = make_grid(attention, nrow=len(attention), normalize=True, scale_each=True)
+                    grid_img = ToPILImage()(grid_img)
 
-            images["masks"] = (repeat(batch["mask"][:, :3].cpu(), "b c h w -> b c (h h4) (w w4)", h4=8, w4=8).float() - 0.5) * 2
+                    txt_label = batch["label_text"][i]
+                    token_lens = pl_module.cond_stage_model.compute_word_len(txt_label.split(" "))
+                    token_positions = np.cumsum(token_lens)
+                    token_positions = token_positions - token_positions[0]
+                    for word, token_pos in zip(txt_label.split(" "), token_positions):
+                        ImageDraw.Draw(grid_img).text(
+                            ((1 + token_pos)*66 + 5, 0), # +5 just offset to look nicer, 66 because grid add pixels
+                            word,
+                            (255, 0, 0)
+                        )
 
-            self.log_local(pl_module.logger.save_dir, split, images,
-                           pl_module.global_step, pl_module.current_epoch, batch_idx)
 
-            logger_log_images = self.logger_log_images.get(logger, lambda *args, **kwargs: None)
-            logger_log_images(pl_module, images, pl_module.global_step, split)
+                    labeled_attention.append(ToTensor()(grid_img))
+                labeled_attention = torch.stack(labeled_attention, dim=0)
+                labeled_attention = (labeled_attention - 0.5) * 2
+                images["attention"] = labeled_attention
 
-            if is_train:
-                pl_module.train()
-        pass
+        for k in images:
+            N = min(images[k].shape[0], self.max_images)
+            images[k] = images[k][:N]
+            if isinstance(images[k], torch.Tensor):
+                images[k] = images[k].detach().cpu()
+                if self.clamp:
+                    images[k] = torch.clamp(images[k].to(float), -1., 1.)
+
+        if images.get("inputs") is not None and images["inputs"].size()[-3] == 8:
+            # Gaussian - just ignore as input
+            images.pop("inputs")
+        self.log_local(pl_module.logger.save_dir, "attention", images,
+                       pl_module.global_step, pl_module.current_epoch, batch_idx)
+
+        logger_log_images = self.logger_log_images.get(logger, lambda *args, **kwargs: None)
+        logger_log_images(pl_module, images, pl_module.global_step, "attention")
+
+        if is_train:
+            pl_module.train()
 
     def check_frequency(self, check_idx):
         if ((check_idx % self.batch_freq) == 0 or (check_idx in self.log_steps)) and (
@@ -219,8 +273,8 @@ class ImageLogger(Callback):
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
         if (trainer.current_epoch == 0 and self.log_first_step) or (trainer.current_epoch > 0 and trainer.current_epoch % self.epoch_frequency == 0):
             if not self.disabled:
+                self.log_attention(pl_module, batch, batch_idx, split="val") # logs attention maps if we condtion on data from validation set
                 self.log_img(pl_module, batch, batch_idx, split="val") # logs image trained from scratch
-                self.log_attention_map(pl_module, batch, batch_idx, split="val") # logs attention maps if we condtion on data from validation set
 
 
 class CUDACallback(Callback):

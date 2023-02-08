@@ -36,8 +36,8 @@ class AttentionExtractor():
     def relevant_token_step_mean(self, x, tok_idx, steps):
         return x[-steps:, :, tok_idx:(tok_idx+1)].mean(dim=(0, 1), keepdim=True)
 
-    def all_token_mean(self, x, steps):
-        return x[-steps:].mean(dim=(0, 1), keepdim=True)
+    def all_token_mean(self, x, steps, max_token=None):
+        return x[-steps:,:,:max_token].mean(dim=(0, 1), keepdim=True)
 
     def multi_relevant_token_step_mean(self, x, tok_idx, steps):
         res = None
@@ -65,12 +65,14 @@ def print_attention_info(attention):
         print(f"Layer: {i} - {attention[0][i].size()}")
 
 
-def reorder_attention_maps(attention):
+def reorder_attention_maps(attention, on_cpu=None):
     for i in range(len(attention)):
         for j in range(len(attention[i])):
             layer = attention[i][j]
             map_size = int(np.sqrt(layer.size()[-2]))
             layer = rearrange(layer.squeeze(dim=1), 'b (h w) tok -> b tok h w', h=map_size, w=map_size)
+            if on_cpu:
+                layer = layer.cpu()
             attention[i][j] = layer
     return attention
 
@@ -97,3 +99,9 @@ def get_latent_slice(batch, opt):
         else:
             ds_slice.append(slice(slice_.start // opt.f, slice_.stop // opt.f, None))
     return tuple(ds_slice)
+
+
+def preprocess_attention_maps(attention_masks, on_cpu=None):
+    reorder_attention_maps(attention_masks, on_cpu)
+    attention_masks = normalize_attention_map_size(attention_masks)
+    return attention_masks

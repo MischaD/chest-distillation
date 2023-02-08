@@ -7,7 +7,7 @@ debug = True
 root = "/vol/ideadata/ed52egek"
 data_dir = os.path.join(root, "data/mimic/jpg/physionet.org/files/mimic-cxr-jpg/2.0.0/") # data
 work_dir = os.path.join(root, "pycharm/chest-distillation") # code, config
-ckpt = os.path.join(root, "diffusionmodels/latentdiffusion/v2-1_512-ema-pruned.ckpt")
+ckpt = os.path.join(root, "diffusionmodels/latentdiffusion/512-base-ema.ckpt")
 ckpt_ft = os.path.join(root, "diffusionmodels/models_finetuned/chest/chest_finetuned.ckpt")
 
 config_path = os.path.join(work_dir, "experiments/chestxray/configs/v2-chest-training.yaml")
@@ -39,7 +39,7 @@ f=8
 
 # stable diffusion args
 seed=4200
-ddim_steps=50
+ddim_steps=75
 ddim_eta = 0.0 # 0 corresponds to deterministic sampling
 fixed_code = True
 scale = 4

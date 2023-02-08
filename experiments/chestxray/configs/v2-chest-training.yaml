@@ -91,13 +91,15 @@ lightning:
     image_logger:
       target: src.callbacks.ImageLogger
       params:
-        epoch_frequency: 4
+        epoch_frequency: 1
         max_images: 4
         clamp: True
-        log_first_step: True
+        log_first_step: False
         log_images_kwargs:
           use_ema_scope: True
           inpaint: False
+          cond_key: "label_text"
+          save_attention: True
           plot_progressive_rows: False
           plot_diffusion_rows: False
           N: 4
