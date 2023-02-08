@@ -14,8 +14,9 @@ from pytorch_lightning import seed_everything
 from pytorch_lightning.trainer import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint, Callback, LearningRateMonitor
 
+from src.preliminary_masks import AttentionExtractor
 from src.datasets import get_dataset
-from src.callbacks import CUDACallback, SetupCallback
+from src.callbacks import CUDACallback, SetupCallback, CheckpointEveryNSteps
 from utils import get_train_args, make_exp_config, load_model_from_config, collate_batch, img_to_viz, instantiate_from_config
 from log import logger, log_experiment
 from log import formatter as log_formatter
@@ -47,9 +48,12 @@ def get_model_checkpoint_config(ckptdir, **kwargs):
         "target": "pytorch_lightning.callbacks.ModelCheckpoint",
         "params": {
             "dirpath": ckptdir,
-            "filename": "{epoch:06}",
             "verbose": True,
-            "save_last": True,
+            "monitor": None,
+            "save_last": False,
+            "save_weights_only": True,
+            "save_top_k": 0,
+            "every_n_train_steps": 0,
         }
     }
 
@@ -113,6 +117,7 @@ def main(opt):
     config = OmegaConf.load(f"{opt.config_path}")
     lightning_config = config.pop("lightning", OmegaConf.create())
     trainer_config = lightning_config.get("trainer", OmegaConf.create())
+    #trainer_config["max_steps"] = 4
     trainer_config["accelerator"] = "gpu"
     trainer_config["strategy"] = "ddp"
     trainer_config["precision"] = 16
@@ -143,18 +148,8 @@ def main(opt):
                                     group="train_language_encoder"
                                     )
     trainer_kwargs["logger"] = instantiate_from_config(logger_cfg)
-    modelckpt_cfg = get_model_checkpoint_config(ckptdir)
-    if hasattr(model, "monitor"):
-        print(f"Monitoring {model.monitor} as checkpoint metric.")
-        modelckpt_cfg["params"]["monitor"] = model.monitor
-        modelckpt_cfg["params"]["save_top_k"] = 3
-
-    if "modelcheckpoint" in lightning_config:
-        modelckpt_cfg_tmp = lightning_config.modelcheckpoint
-    else:
-        modelckpt_cfg = OmegaConf.create()
-    modelckpt_cfg = OmegaConf.merge(modelckpt_cfg, modelckpt_cfg_tmp)
-    trainer_kwargs["checkpoint_callback"] = instantiate_from_config(modelckpt_cfg)
+    modelckpt_cfg_default = get_model_checkpoint_config(ckptdir)
+    checkpoint_callback = instantiate_from_config(modelckpt_cfg_default)
 
     setup_cb = SetupCallback(resume=resume,
                   logdir=log_dir,
@@ -165,26 +160,19 @@ def main(opt):
                   debug= opt.debug,
                   enable_multinode_hacks=MULTINODE_HACKS,
     )
-    from src.preliminary_masks import AttentionExtractor
     image_logger = instantiate_from_config(lightning_config["callbacks"]["image_logger"])
     image_logger.set_attention_extractor(AttentionExtractor("all_token_mean", steps=int(opt.ddim_steps * 4/5), max_token=10))
     learning_rate_logger = LearningRateMonitor(logging_interval="step")
+
     cuda_callback = CUDACallback()
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        dirpath=os.path.join(ckptdir, 'trainstep_checkpoints'),
-        filename="{epoch:06}-{step:09}",
-        verbose=True,
-        save_top_k=-1,
-        every_n_train_steps=10000,
-        save_weights_only=True,
+    step_checkpoint_callback = CheckpointEveryNSteps(save_step_frequency=10000)
 
-    )
-
+    trainer_kwargs["callbacks"] = [setup_cb, image_logger, learning_rate_logger, cuda_callback, checkpoint_callback, step_checkpoint_callback]
     trainer_kwargs["precision"] = trainer_config["precision"]
     trainer_kwargs["accelerator"] = trainer_config["accelerator"]
     trainer_kwargs["strategy"] = trainer_config["strategy"]
     trainer_kwargs["devices"] = trainer_config["devices"]
-    trainer_kwargs["callbacks"] = [setup_cb, image_logger, learning_rate_logger, cuda_callback, checkpoint_callback]
+    trainer_kwargs["max_steps"] = opt.max_steps if hasattr(opt, "max_steps") else 60000
     trainer = Trainer(**trainer_kwargs)
     trainer.logdir = log_dir
 
@@ -240,22 +228,22 @@ class DataModuleFromConfig(pl.LightningDataModule):
 
     def _train_dataloader(self):
         return DataLoader(self.datasets["train"], batch_size=self.batch_size,
-                          num_workers=self.num_workers, shuffle=True)
+                          num_workers=self.num_workers, shuffle=True, collate_fn=collate_batch)
 
     def _val_dataloader(self, shuffle=False):
         return DataLoader(self.datasets["validation"],
                           batch_size=self.batch_size,
                           num_workers=self.num_val_workers,
-                          shuffle=shuffle)
+                          shuffle=shuffle, collate_fn=collate_batch)
 
     def _test_dataloader(self, shuffle=False):
         return DataLoader(self.datasets["test"], batch_size=self.batch_size,
-                          num_workers=self.num_workers, shuffle=shuffle)
+                          num_workers=self.num_workers, shuffle=shuffle, collate_fn=collate_batch)
 
     def _predict_dataloader(self, shuffle=False):
         return DataLoader(self.datasets["predict"], batch_size=self.batch_size,
                           shuffle=shuffle,
-                          num_workers=self.num_workers)
+                          num_workers=self.num_workers, collate_fn=collate_batch)
 
 
 if __name__ == '__main__':

@@ -10,12 +10,12 @@ model:
     cond_stage_key: "impression"
     image_size: 64
     channels: 4
-    cond_stage_trainable: false
+    cond_stage_trainable: False
     first_stage_key: "img"
     conditioning_key: crossattn
     monitor: val/loss_simple_ema
     scale_factor: 0.18215
-    use_ema: True # we set this to false because this is an inference only config
+    use_ema: True
 
     scheduler_config: # 10000 warmup steps
       target: src.ldm.lr_scheduler.LambdaLinearScheduler
@@ -80,18 +80,11 @@ model:
 
 lightning:
   find_unused_parameters: False
-
-  modelcheckpoint:
-    params:
-      every_n_train_steps: 2000
-      save_top_k: -1
-      monitor: null
-
   callbacks:
     image_logger:
       target: src.callbacks.ImageLogger
       params:
-        epoch_frequency: 1
+        epoch_frequency: 1 #
         max_images: 4
         clamp: True
         log_first_step: False

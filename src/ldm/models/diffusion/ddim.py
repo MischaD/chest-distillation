@@ -148,7 +148,7 @@ class DDIMSampler(object):
         if save_attention:
             self.model.model.diffusion_model.enable_attention_save_mode()
 
-        for i, step in tqdm(enumerate(time_range), desc="DDIM sampling"):
+        for i, step in enumerate(time_range):
             index = total_steps - i - 1
             ts = torch.full((b,), step, device=device, dtype=torch.long)
 

@@ -421,7 +421,8 @@ class DDPM(pl.LightningModule):
         if len(x.shape) == 3:
             x = x[..., None]
         if len(x.shape) == 4:
-            x = rearrange(x, 'b h w c -> b c h w')
+            if x.size()[1] != 4 and x.size()[1] != 8: # 8 if we still have to sample it
+                x = rearrange(x, 'b h w c -> b c h w')
         if len(x.shape) == 5:
             x = x.squeeze()
         x = x.to(memory_format=torch.contiguous_format).float()

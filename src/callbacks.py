@@ -9,6 +9,7 @@ from omegaconf import OmegaConf
 from PIL import Image
 from einops import repeat
 from torch import autocast
+from log import logger
 
 from torchvision.utils import make_grid
 from torchvision.transforms import ToPILImage, ToTensor
@@ -135,7 +136,7 @@ class ImageLogger(Callback):
     def log_img(self, pl_module, batch, batch_idx, split="train"):
         if (hasattr(pl_module, "log_images") and
                 callable(pl_module.log_images)):
-            logger = type(pl_module.logger)
+            loc_logger = type(pl_module.logger)
 
             is_train = pl_module.training
             if is_train:
@@ -186,14 +187,14 @@ class ImageLogger(Callback):
             self.log_local(pl_module.logger.save_dir, split, images,
                            pl_module.global_step, pl_module.current_epoch, batch_idx)
 
-            logger_log_images = self.logger_log_images.get(logger, lambda *args, **kwargs: None)
+            logger_log_images = self.logger_log_images.get(loc_logger, lambda *args, **kwargs: None)
             logger_log_images(pl_module, images, pl_module.global_step, split)
 
             if is_train:
                 pl_module.train()
 
     def log_attention(self, pl_module, batch, batch_idx, split="train"):
-        logger = type(pl_module.logger)
+        loc_logger = type(pl_module.logger)
 
         is_train = pl_module.training
         if is_train:
@@ -250,7 +251,7 @@ class ImageLogger(Callback):
         self.log_local(pl_module.logger.save_dir, "attention", images,
                        pl_module.global_step, pl_module.current_epoch, batch_idx)
 
-        logger_log_images = self.logger_log_images.get(logger, lambda *args, **kwargs: None)
+        logger_log_images = self.logger_log_images.get(loc_logger, lambda *args, **kwargs: None)
         logger_log_images(pl_module, images, pl_module.global_step, "attention")
 
         if is_train:
@@ -273,8 +274,11 @@ class ImageLogger(Callback):
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
         if (trainer.current_epoch == 0 and self.log_first_step) or (trainer.current_epoch > 0 and trainer.current_epoch % self.epoch_frequency == 0):
             if not self.disabled:
-                self.log_attention(pl_module, batch, batch_idx, split="val") # logs attention maps if we condtion on data from validation set
-                self.log_img(pl_module, batch, batch_idx, split="val") # logs image trained from scratch
+                print("oi")
+                logger.info("Start sampling of image.")
+                #self.log_img(pl_module, batch, batch_idx, split="val") # logs image trained from scratch
+                logger.info("Start sampling with attention.")
+                #self.log_attention(pl_module, batch, batch_idx, split="val") # logs attention maps if we condtion on data from validation set
 
 
 class CUDACallback(Callback):
@@ -298,3 +302,34 @@ class CUDACallback(Callback):
             rank_zero_info(f"Average Peak memory {max_memory:.2f}MiB")
         except AttributeError:
             pass
+
+
+
+class CheckpointEveryNSteps(pl.Callback):
+    """
+    Save a checkpoint every N steps, instead of Lightning's default that checkpoints
+    based on validation loss.
+    """
+
+    def __init__(
+        self,
+        save_step_frequency,
+    ):
+        """
+        Args:
+            save_step_frequency: how often to save in steps
+            prefix: add a prefix to the name, only used if
+                use_modelcheckpoint_filename=False
+            use_modelcheckpoint_filename: just use the ModelCheckpoint callback's
+                default filename, don't use ours.
+        """
+        self.save_step_frequency = save_step_frequency
+
+    def on_train_batch_end(self, trainer: pl.Trainer, *args, **kwargs):
+        """ Check if we should save a checkpoint after every train batch """
+        if trainer.global_step % self.save_step_frequency == 0 and trainer.global_step != 0:
+            global_step=trainer.global_step
+            filename = f"{global_step=}.ckpt"
+            ckpt_path = os.path.join(trainer.checkpoint_callback.dirpath, filename)
+            trainer.save_checkpoint(ckpt_path)
+
