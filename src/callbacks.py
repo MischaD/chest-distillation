@@ -20,6 +20,8 @@ from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.utilities.distributed import rank_zero_only
 from pytorch_lightning.utilities import rank_zero_info
 from src.preliminary_masks import preprocess_attention_maps
+from src.visualization.utils import log_images_helper
+from pytorch_lightning.loggers import WandbLogger
 
 
 
@@ -136,7 +138,6 @@ class ImageLogger(Callback):
     def log_img(self, pl_module, batch, batch_idx, split="train"):
         if (hasattr(pl_module, "log_images") and
                 callable(pl_module.log_images)):
-            loc_logger = type(pl_module.logger)
 
             is_train = pl_module.training
             if is_train:
@@ -187,8 +188,8 @@ class ImageLogger(Callback):
             self.log_local(pl_module.logger.save_dir, split, images,
                            pl_module.global_step, pl_module.current_epoch, batch_idx)
 
-            logger_log_images = self.logger_log_images.get(loc_logger, lambda *args, **kwargs: None)
-            logger_log_images(pl_module, images, pl_module.global_step, split)
+            if isinstance(pl_module.logger, WandbLogger):
+                log_images_helper(pl_module.logger, images, prefix="", drop_samples=False)
 
             if is_train:
                 pl_module.train()
@@ -251,8 +252,8 @@ class ImageLogger(Callback):
         self.log_local(pl_module.logger.save_dir, "attention", images,
                        pl_module.global_step, pl_module.current_epoch, batch_idx)
 
-        logger_log_images = self.logger_log_images.get(loc_logger, lambda *args, **kwargs: None)
-        logger_log_images(pl_module, images, pl_module.global_step, "attention")
+        if isinstance(pl_module.logger, WandbLogger):
+            log_images_helper(pl_module.logger, images, prefix="imgin-", drop_samples=False)
 
         if is_train:
             pl_module.train()
@@ -268,17 +269,13 @@ class ImageLogger(Callback):
             return True
         return False
 
-    #def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
-    #    pass
-
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
         if (trainer.current_epoch == 0 and self.log_first_step) or (trainer.current_epoch > 0 and trainer.current_epoch % self.epoch_frequency == 0):
             if not self.disabled:
-                print("oi")
                 logger.info("Start sampling of image.")
-                #self.log_img(pl_module, batch, batch_idx, split="val") # logs image trained from scratch
+                self.log_img(pl_module, batch, batch_idx, split="val") # logs image trained from scratch
                 logger.info("Start sampling with attention.")
-                #self.log_attention(pl_module, batch, batch_idx, split="val") # logs attention maps if we condtion on data from validation set
+                self.log_attention(pl_module, batch, batch_idx, split="val") # logs attention maps if we condtion on data from validation set
 
 
 class CUDACallback(Callback):
@@ -328,6 +325,7 @@ class CheckpointEveryNSteps(pl.Callback):
     def on_train_batch_end(self, trainer: pl.Trainer, *args, **kwargs):
         """ Check if we should save a checkpoint after every train batch """
         if trainer.global_step % self.save_step_frequency == 0 and trainer.global_step != 0:
+            logger.info("Start saving model")
             global_step=trainer.global_step
             filename = f"{global_step=}.ckpt"
             ckpt_path = os.path.join(trainer.checkpoint_callback.dirpath, filename)

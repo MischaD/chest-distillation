@@ -78,3 +78,12 @@ def load_attention_maps(dataset, n):
 
 def downsample_img_to_latent(img, opt):
     return reduce(img, 'b c (h h2) (w w2) -> b c h w', reduction='mean', h2=opt.f, w2=opt.f)
+
+
+def log_images_helper(logger, images: dict, prefix="", drop_samples=False):
+    for k, v in images.items():
+        if k == "samples" and drop_samples:  # to not get confused - samples conditioned on img are perfect - but not relevant
+            continue
+        grid = make_grid(images[k], nrow=1)
+        logger.log_image(key=prefix + k, images=[grid])
+

@@ -51,5 +51,6 @@ num_workers=1
 
 #trainer
 max_steps=60001#just to make sure 60k is saved
+checkpoint_save_frequency=10000
 
 precompute_latent_training_data=True
