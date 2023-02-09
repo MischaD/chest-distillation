@@ -20,6 +20,7 @@ dataset_args_train = dict(
     split=DatasetSplit("train"),
     #all 8b308d1ff146fc994156bb7f50775f99891bdd33
     #limit_dataset=[0, 10],#c0a08655ac43528158bef787cbfa549c447665dfb
+    limit_dataset=[0, 100],
     preload=True,
 )
 dataset_args_val = dict(
@@ -52,5 +53,6 @@ num_workers=1
 #trainer
 max_steps=60001#just to make sure 60k is saved
 checkpoint_save_frequency=10000
+num_nodes=1
 
 precompute_latent_training_data=True

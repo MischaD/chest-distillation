@@ -117,14 +117,6 @@ def main(opt):
 
     config = OmegaConf.load(f"{opt.config_path}")
     lightning_config = config.pop("lightning", OmegaConf.create())
-    #trainer_config = lightning_config.get("trainer", OmegaConf.create())
-    #trainer_config["max_steps"] = 4
-    #trainer_config["accelerator"] = "gpu"
-    #trainer_config["strategy"] = "ddp"
-    #trainer_config["precision"] = 16
-    #trainer_config["devices"] = torch.cuda.device_count()
-    #lightning_config.trainer = trainer_config
-
 
     model = load_model_from_config(config, f"{opt.ckpt}")
 
@@ -153,7 +145,7 @@ def main(opt):
     checkpoint_callback = instantiate_from_config(modelckpt_cfg_default)
 
     setup_cb = SetupCallback(resume=resume,
-                  logdir=log_dir,
+                  logdir=opt.log_dir,
                   ckptdir=ckptdir,
                   cfgdir=cfgdir,
                   config=config,
@@ -169,17 +161,10 @@ def main(opt):
     step_checkpoint_callback = CheckpointEveryNSteps(save_step_frequency=opt.checkpoint_save_frequency)
 
     trainer_kwargs["callbacks"] = [setup_cb, image_logger, learning_rate_logger, cuda_callback, checkpoint_callback, step_checkpoint_callback]
-    #trainer_config = lightning_config.get("trainer", OmegaConf.create())
-    #trainer_config["max_steps"] = 4
-    #trainer_config["accelerator"] = "gpu"
-    #trainer_config["strategy"] = "ddp"
-    #trainer_config["precision"] = 16
-    #trainer_config["devices"] = torch.cuda.device_count()
-    #lightning_config.trainer = trainer_config
-
     trainer_kwargs["precision"] = 16
     trainer_kwargs["accelerator"] = "gpu"
     trainer_kwargs["strategy"] = "ddp" # trainer_config["strategy"]
+    trainer_kwargs["num_nodes"] = opt.num_nodes # trainer_config["strategy"]
     trainer_kwargs["devices"] = torch.cuda.device_count()
     trainer_kwargs["max_steps"] = opt.max_steps if hasattr(opt, "max_steps") else 60001
     trainer_kwargs["num_sanity_val_steps"] = 0

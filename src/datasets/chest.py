@@ -155,10 +155,11 @@ class MimicCXRDataset(FOBADataset):
         return os.path.isdir(self.precomputed_path)
 
     def load_precomputed(self, model):
+        logger.info(f"Using precomputed dataset with name: {self.precomputed_path}")
         if not self.is_precomputed:
+            logger.info(f"Precomputed dataset not found - precomputing it on my own: {self.precomputed_path}")
             self.precompute(model)
 
-        logger.info(f"Using precomputed dataset with name: {self.precomputed_path}")
         entries = pickle.load(open(os.path.join(self.precomputed_path, "entries.pkl"), "rb"))
         dir_list = os.listdir(self.precomputed_path)
         for file in dir_list:
@@ -208,12 +209,13 @@ class MimicCXRDataset(FOBADataset):
 
     def precompute(self, model):
         #load entries
-        entry = self._load_images([0])
-        keys = entry.keys()
-        entries = {key: [] for key in keys}
+        entries = {}
         for i in tqdm(range(len(self)), "Precomputing Dataset"):
             entry = self._load_images([i])
-            for k in keys:
+            for k in entry.keys():
+                if entries.get(k) is None:
+                    assert i == 0
+                    entries[k] = []
                 entries[k].append(entry[k])
 
             # preprocess --> 1 x 8 x 64 x 64 diag gaussian latent

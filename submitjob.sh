@@ -4,6 +4,7 @@
 #SBATCH --gres=gpu:a100:1
 #SBATCH --partition=a100
 #SBATCH --export=NONE
+#SBATCH -C a100_80
 
 cd $WORK/pycharm/chest-distillation
 

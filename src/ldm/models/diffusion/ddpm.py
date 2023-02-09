@@ -593,7 +593,7 @@ class LatentDiffusion(DDPM):
 
     @rank_zero_only
     @torch.no_grad()
-    def on_train_batch_start(self, batch, batch_idx, dataloader_idx):
+    def on_train_batch_start(self, batch, batch_idx):
         # only for very first batch
         if self.scale_by_std and self.current_epoch == 0 and self.global_step == 0 and batch_idx == 0 and not self.restarted_from_ckpt:
             assert self.scale_factor == 1., 'rather not use custom rescaling and std-rescaling simultaneously'
@@ -913,6 +913,7 @@ class LatentDiffusion(DDPM):
 
         loss_simple = self.get_loss(model_output, target, mean=False).mean([1, 2, 3])
         loss_dict.update({f'{prefix}/loss_simple': loss_simple.mean()})
+        self.logvar = self.logvar.to("cuda")
 
         logvar_t = self.logvar[t].to(self.device)
         loss = loss_simple / torch.exp(logvar_t) + logvar_t
