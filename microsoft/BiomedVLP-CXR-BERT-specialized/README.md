@@ -1,0 +1,1 @@
+Taken from https://huggingface.co/microsoft/BiomedVLP-CXR-BERT-specialized/tree/main

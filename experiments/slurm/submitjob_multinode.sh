@@ -1,11 +1,14 @@
 #!/bin/bash -l
-#SBATCH --time=24:00:00
-#SBATCH --job-name=SDv2_Baseline_BatchSize128
+#SBATCH --time=02:00:00
+#SBATCH --job-name=SDv2_Baseline_BatchSize-256-2htrial
 #SBATCH --ntasks-per-node=8
-#SBATCH --gres=gpu:a100:8
+#SBATCH --nodes=2
 #SBATCH --partition=a100
+#SBATCH --qos=a100multi
+#SBATCH --gres=gpu:a100:8
 #SBATCH -C a100_80
 #SBATCH --export=NONE
+
 
 cd $WORK/pycharm/chest-distillation
 
@@ -22,4 +25,4 @@ module load cuda/11.4
 # anaconda
 source activate chest
 
-srun python scripts/train_baseline.py experiments/chestxray/train_baseline_reontgen_hpc.py finetune-sd-128
+srun python scripts/train_baseline.py experiments/chestxray/train_baseline_reontgen_hpc_multinode.py finetune-sd-bs256

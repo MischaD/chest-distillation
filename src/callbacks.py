@@ -17,8 +17,7 @@ from einops import rearrange, repeat
 from PIL import ImageDraw
 
 from pytorch_lightning.callbacks import Callback
-from pytorch_lightning.utilities.distributed import rank_zero_only
-from pytorch_lightning.utilities import rank_zero_info
+from pytorch_lightning.utilities import rank_zero_only, rank_zero_info
 from src.preliminary_masks import preprocess_attention_maps
 from src.visualization.utils import log_images_helper
 from pytorch_lightning.loggers import WandbLogger

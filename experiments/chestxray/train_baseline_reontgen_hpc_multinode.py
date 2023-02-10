@@ -27,7 +27,7 @@ dataset_args_val = dict(
     dataset="chestxraymimicbbox",
     base_dir=data_dir,
     split=DatasetSplit("mscxr"),
-    limit_dataset=[0, 4], #213851912adf554689226fff69183d41d96f6d44
+    limit_dataset=[0, 64], #6d79a86d53fe64e8ea8dca6e81be75b0edfd98c4
     preload=True,
 )
 
@@ -51,7 +51,7 @@ num_workers=1
 
 #trainer
 max_steps=60001#just to make sure 60k is saved
-checkpoint_save_frequency=10000
+checkpoint_save_frequency=5000
 num_nodes=2
 
 precompute_latent_training_data=True

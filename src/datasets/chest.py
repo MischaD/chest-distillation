@@ -303,6 +303,11 @@ class MimicCXRDatasetMSBBOX(MimicCXRDataset):
         entry["img"] = self._load_image(os.path.join(self.base_dir, entry["rel_path"].replace(".dcm", ".jpg")))
 
         meta_data_entry = self.bbox_meta_data.loc[entry["dicom_id"]]
+        if isinstance(meta_data_entry, pd.DataFrame):
+            meta_data_entry = meta_data_entry[meta_data_entry["category_name"] == entry["finding_labels"]]
+            assert len(meta_data_entry) == 1
+            meta_data_entry = meta_data_entry.iloc[0]
+
         image_width, image_height = meta_data_entry[["image_width", "image_height"]]
         bboxes = meta_data_entry["bboxxywh"].split("|")
         bbox_img = torch.zeros((image_height, image_width), dtype=bool)
