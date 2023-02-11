@@ -20,8 +20,12 @@ from contextlib import contextmanager, nullcontext
 from src.datasets import get_dataset
 from src.foreground_masks import GMMMaskSuggestor
 from src.visualization.utils import model_to_viz
-from log import logger, log_experiment, file_handler
+from log import logger, log_experiment
 from sklearn.metrics import jaccard_score
+from log import logger, log_experiment
+from log import formatter as log_formatter
+from tqdm import tqdm
+import logging
 from utils import get_compute_mask_args, make_exp_config, load_model_from_config, collate_batch, img_to_viz
 from einops import reduce, rearrange, repeat
 from pytorch_lightning import seed_everything
@@ -32,6 +36,7 @@ from src.ldm.util import AttentionSaveMode
 from src.ldm.models.diffusion.plms import PLMSSampler
 from src.preliminary_masks import reorder_attention_maps, normalize_attention_map_size
 from src.ldm.models.diffusion.ddim import DDIMSampler
+from src.evaluation.utils import compute_metrics, compute_prediction_from_binary_mask
 from sklearn.metrics import roc_auc_score
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
@@ -88,7 +93,7 @@ def check_mask_exists(opt, samples):
 def main(opt):
     logger.info(f"=" * 50 + f"Running with prompt: {opt.prompt}" + "="*50)
 
-    dataset = get_dataset(opt, opt.split)
+    dataset = get_dataset(opt, "test")
     logger.info(f"Length of dataset: {len(dataset)}")
 
     config = OmegaConf.load(f"{opt.config_path}")
@@ -255,47 +260,22 @@ def main(opt):
                 plt.savefig(path + "_detailed.png", bbox_inches="tight")
                 log_some -= 1
 
-
-
     df = pd.DataFrame(results)
     logger.info(f"Saving file with results to {opt.log_dir}")
     df.to_csv(os.path.join(opt.log_dir, "bbox_results.csv"))
 
 
-def compute_prediction_from_binary_mask(binary_prediction):
-    binary_prediction = binary_prediction.to(torch.bool).numpy()
-    horizontal_indicies = np.where(np.any(binary_prediction, axis=0))[0]
-    vertical_indicies = np.where(np.any(binary_prediction, axis=1))[0]
-    x1, x2 = horizontal_indicies[[0, -1]]
-    y1, y2 = vertical_indicies[[0, -1]]
-    prediction = np.zeros_like(binary_prediction)
-    prediction[y1:y2, x1:x2] = 1
-    center_of_mass = [x1 + (x2 - x1) / 2, y1 + (y2 - y1) / 2]
-    return prediction, center_of_mass, (x1, x2, y1, y2)
-
-
-def compute_metrics(bbox, binary_prediction):
-    x, y, h, w = bbox
-    ground_truth_bbox_img = torch.zeros_like(binary_prediction)
-    ground_truth_bbox_img[x:(x + w), y: (y + h)] = 1
-
-    prediction, center_of_mass_prediction, bbox_pred = compute_prediction_from_binary_mask(binary_prediction)
-
-    iou = torch.tensor(jaccard_score(ground_truth_bbox_img.flatten(), prediction.flatten()))
-    iou_rev = torch.tensor(jaccard_score(1 - ground_truth_bbox_img.flatten(), 1 - prediction.flatten()))
-
-    center_of_mass = [x + w / 2,
-                      y + h / 2]
-    miou = (iou + iou_rev)/2
-
-    distance = np.sqrt((center_of_mass[0] - center_of_mass_prediction[0])**2 +
-                       (center_of_mass[1] - center_of_mass_prediction[1])**2
-                      )
-    return iou, miou, distance, bbox_pred
-
-
 if __name__ == '__main__':
     args = get_compute_mask_args()
+    log_dir = os.path.join(os.path.abspath("."), "log", args.EXP_NAME, datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S"))
+    os.makedirs(log_dir, exist_ok=True)
+    file_handler = logging.FileHandler(os.path.join(log_dir, 'console.log'))
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(log_formatter)
+    logger.addHandler(file_handler)
+    logger.debug("="*30 + f"Running {os.path.basename(__file__)}" + "="*30)
+    logger.debug(f"Logging to {log_dir}")
+
     opt = make_exp_config(args.EXP_PATH)
     for key, value in vars(args).items():
         if value is not None:
@@ -307,4 +287,5 @@ if __name__ == '__main__':
     setattr(opt, "log_dir", log_dir)
     logger.debug(f"Current file: {__file__}")
     log_experiment(logger, args, opt.config_path)
+
     main(opt)

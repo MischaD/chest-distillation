@@ -32,6 +32,15 @@ dataset_args_val = dict(
     preload=True,
 )
 
+dataset_args_test = dict(
+    dataset="chestxraymimicbbox",
+    base_dir=data_dir,
+    split=DatasetSplit("mscxr"),
+    preload=True,
+)
+
+
+
 # dataset
 C=4 # latent channels
 H=512
