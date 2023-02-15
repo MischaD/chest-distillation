@@ -15,6 +15,7 @@ def get_compute_mask_args():
     parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
     parser.add_argument("EXP_NAME", type=str, help="Path to Experiment results")
     parser.add_argument("--ckpt", type=str, default="train")
+    parser.add_argument("--mask_dir", type=str, default=None, help="dir to save masks in. Default will be inside log dir and should be used!")
     return parser.parse_args()
 
 def get_train_args():

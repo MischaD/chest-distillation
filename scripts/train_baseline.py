@@ -261,6 +261,7 @@ if __name__ == '__main__':
     # make log dir (same as the one for the console log)
     log_dir = os.path.join(os.path.dirname(file_handler.baseFilename))
     setattr(opt, "log_dir", log_dir)
+    logger.info(f"Log dir: {log_dir}")
     logger.debug(f"Current file: {__file__}")
     log_experiment(logger, args, opt.config_path)
 

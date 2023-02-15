@@ -19,6 +19,9 @@ from torch import autocast
 from contextlib import contextmanager, nullcontext
 from src.datasets import get_dataset
 from src.foreground_masks import GMMMaskSuggestor
+from src.preliminary_masks import preprocess_attention_maps
+from src.visualization.utils import word_to_slice
+from src.visualization.utils import MIMIC_STRING_TO_ATTENTION
 from src.visualization.utils import model_to_viz
 from log import logger, log_experiment
 from sklearn.metrics import jaccard_score
@@ -41,6 +44,7 @@ from sklearn.metrics import roc_auc_score
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 import matplotlib.patches as patches
+from src.datasets.utils import path_to_tensor
 
 
 def get_latent_slice(batch, opt):
@@ -82,24 +86,37 @@ def add_viz_of_data_and_pred(images, batch, x_samples_ddim, opt):
         reduce(batch["segmentation_x"], 'b c (h h2) (w w2) -> b c h w', 'max', h2=opt.f, w2=opt.f))
 
 
-def check_mask_exists(opt, samples):
+def contrast_to_noise_ratio(ground_truth_img, prelim_mask_large):
+    gt_mask = ground_truth_img.flatten()
+    pr_mask = prelim_mask_large.flatten()
+
+    roi_values = pr_mask[gt_mask == 1.0]
+    not_roi_values = pr_mask[gt_mask != 1.0]
+
+    contrast = roi_values.mean() - not_roi_values.mean()
+    noise = torch.sqrt(
+        roi_values.var() / 2 + not_roi_values.var() / 2
+    )
+    cnr = contrast / noise
+    return cnr
+
+
+def check_mask_exists(mask_dir, samples):
     for i in range(len(samples["rel_path"])):
-        path = os.path.join(opt.out_dir, samples["rel_path"][i] + ".pt")
+        path = os.path.join(mask_dir, samples["rel_path"][i] + ".pt")
         if not os.path.exists(path):
             return False
     return True
 
 
 def main(opt):
-    logger.info(f"=" * 50 + f"Running with prompt: {opt.prompt}" + "="*50)
-
     dataset = get_dataset(opt, "test")
     logger.info(f"Length of dataset: {len(dataset)}")
 
     config = OmegaConf.load(f"{opt.config_path}")
     config["model"]["params"]["use_ema"] = False
-    attention_save_mode = config["model"]["params"]["unet_config"]["params"]["attention_save_mode"]
-    logger.info(f"enable attention save mode: {attention_save_mode}")
+    config["model"]["params"]["unet_config"]["params"]["attention_save_mode"] = "cross"
+    logger.info(f"Enabling attention save mode")
 
     model = load_model_from_config(config, f"{opt.ckpt}")
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -107,6 +124,8 @@ def main(opt):
     sampler = DDIMSampler(model)
 
     os.makedirs(opt.out_dir, exist_ok=True)
+    dataset.apply_filter_for_disease_in_txt()
+    dataset.load_precomputed(model)
 
     start_code = None
     seed_everything(opt.seed)
@@ -132,137 +151,163 @@ def main(opt):
                             )
 
 
-    # for visualization of intermediate results
-    log_initial_run = True
-    topil = torchvision.transforms.ToPILImage()
-    resize_to_imag_size = torchvision.transforms.Resize(512)
+    if hasattr(opt, "mask_dir"):
+        mask_dir = opt.mask_dir
+    else:
+        mask_dir = os.path.join(opt.log_dir, "preliminary_masks")
+    logger.info(f"Mask dir: {mask_dir}")
+
     for samples in tqdm(dataloader, "generating masks"):
         with torch.no_grad():
             with precision_scope("cuda"):
                 with model.ema_scope():
-                    img = resize_to_imag_size(samples["x"].to(torch.float32).to(device))
-                    x0_posterior = model.encode_first_stage(img)
-                    x0 = model.get_first_stage_encoding(x0_posterior)
-                    mask = torch.ones_like(x0)
-
-                    c = model.get_learned_conditioning(opt.batch_size * [opt.prompt, ])
-                    logger.info(f"Start reverse diffusion from {start_reverse_diffusion_from_t}")
-
-                    b = len(x0)
-                    if check_mask_exists(opt, samples):
+                    if check_mask_exists(mask_dir, samples):
                         logger.info(f"Masks already exists for {samples['rel_path']}")
                         continue
+                    #img = model.log_images(samples, cond_key="label_text", unconditional_guidance_scale=1.0, inpaint=False)
+                    images = model.log_images(samples, split="test", sample=False, inpaint=True,
+                                                  plot_progressive_rows=False, plot_diffusion_rows=False,
+                                                  use_ema_scope=False, cond_key="label_text", mask=1.,
+                                                  save_attention=True)
+                    attention_maps = images.pop("attention")
+                    attention_images = preprocess_attention_maps(attention_maps, on_cpu=False)
 
-                    else:
-                        samples_ddim, intermediates = sampler.sample(
-                                                                    model=model,
-                                                                    t=start_reverse_diffusion_from_t,
-                                                                    repeat_steps=num_repeat_each_diffusion_step,
-                                                                    S=opt.ddim_steps,
-                                                                    conditioning=c[:b],
-                                                                    batch_size=b,
-                                                                    shape=x0.size()[1:],
-                                                                    verbose=False,
-                                                                    unconditional_guidance_scale=opt.scale,
-                                                                    eta=opt.ddim_eta,
-                                                                    x_T=start_code[:b],
-                                                                    mask=mask,
-                                                                    x0=x0,
-                                                                    save_attention=True,
-                                                                )
+                    for j, attention in enumerate(attention_images):
+                        txt_label = samples["label_text"][j]
+                        # determine tokenization
+                        txt_label = txt_label.split("|")[0]  # we filter cases with different text labels, all are the same thanks for filtering
+                        token_lens = model.cond_stage_model.compute_word_len(txt_label.split(" "))
+                        token_positions = list(np.cumsum(token_lens) + 1)
+                        token_positions = [1,] + token_positions
+                        label = samples["finding_labels"][j]
+                        query_words = MIMIC_STRING_TO_ATTENTION[label]
+
+                        locations = word_to_slice(txt_label.split(" "), query_words)
+                        assert len(locations) >= 1, f"{samples['dicom_id'][j]}"
+
+                        tok_attentions = []
+                        for location in locations:
+                            tok_attention = attention[-1*rev_diff_steps:,:,token_positions[location]:token_positions[location+1]]
+                            tok_attentions.append(tok_attention.mean(dim=(0,1,2)))
+                        preliminary_attention_mask = torch.stack(tok_attentions).mean(dim=(0))
+
+                        path = os.path.join(mask_dir, samples["rel_path"][j])+ ".pt"
+                        os.makedirs(os.path.dirname(path), exist_ok=True)
+                        logger.info(f"Saving attention mask to {path}")
+                        torch.save(preliminary_attention_mask.to("cpu"), path)
 
 
-                        attention_masks = intermediates["attention"]
-                        attention_masks = reorder_attention_maps(attention_masks)
-                        attention_masks = normalize_attention_map_size(attention_masks)
+    topil = torchvision.transforms.ToPILImage()
+    resize_to_imag_size = torchvision.transforms.Resize(512)
+    resize_to_latent_size = torchvision.transforms.Resize(64)
 
-                        for i in range(len(attention_masks)):
-                            attention_mask = opt.attention_extractor(attention_masks[i])
-                            attention_mask = attention_mask.cpu()
-
-                            path = os.path.join(opt.out_dir, samples["rel_path"][i])
-                            os.makedirs(os.path.dirname(path), exist_ok=True)
-
-                            # save intermediate attention maps
-                            path = os.path.join(opt.out_dir, samples["rel_path"][i]) + ".pt"
-                            logger.info(f"Saving attention mask to {path}")
-                            torch.save(attention_mask, path)
-
-                        if log_initial_run:
-                            log_path = os.path.join(opt.log_dir, os.path.dirname(samples["rel_path"][i]))
-                            os.makedirs(log_path, exist_ok=True)
-                            log_path = os.path.join(opt.log_dir, samples["rel_path"][i])
-
-                            x_samples_ddim = model.decode_first_stage(samples_ddim)
-                            x_samples_ddim = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
-
-                            attention_mask = (attention_mask - attention_mask.min()) / (attention_mask.max() - attention_mask.min())
-                            attention_mask = repeat(resize_to_imag_size(rearrange(attention_mask, "1 1 1 h w -> 1 h w")), "1 h w -> c h w", c=3)
-
-                            attention_masks = torch.stack([opt.attention_extractor(attention_masks[i]).squeeze() for i in range(len(attention_masks))]).unsqueeze(dim=1)
-                            attention_masks = (attention_masks - attention_masks.min()) / (attention_masks.max() - attention_masks.min())
-                            attention_masks = repeat(resize_to_imag_size(attention_masks), "b 1 h w -> b 3 h w")
-
-                            logger.info(f"Saving preliminary results to {log_path}")
-                            topil(make_grid(torch.cat([x_samples_ddim.cpu(), attention_masks.cpu()], dim=0), nrow=2)).save(log_path)
-                            log_initial_run = False
-
-    dataset.add_preliminary_masks(opt.out_dir)
+    dataset.add_preliminary_masks(mask_dir)
     mask_suggestor = GMMMaskSuggestor(opt)
-    log_some = 10
-    results = {"rel_path":[], "Finding Label":[], "iou":[], "miou":[], "distance":[]}
+    log_some = 1e5
+    results = {"rel_path":[], "finding_labels":[], "iou":[], "miou":[], "bboxiou":[], "bboxmiou":[], "distance":[], "top1":[], "aucroc": [], "cnr":[]}
 
     for samples in tqdm(dataloader, "computing metrics"):
-        for i in range(len(samples["x"])):
+        #z, c, x, xrec = model.get_input(samples, "img", cond_key="label_text", bs=len(samples["rel_path"]),
+        #                                    return_first_stage_outputs=True)
+
+        for i in range(len(samples["img"])):
             sample = {k: v[i] for k, v in samples.items()}
-            resize_to_input_size = torchvision.transforms.Resize(1024)
-            bbox = int(sample["bbox"]["bbox_x"]), int(sample["bbox"]["bbox_y"]), int(sample["bbox"]["bbox_w"]), int(sample["bbox"]["bbox_h"])
-            x, y, h, w = tuple(bbox)
+            dataset.add_preliminary_to_sample(sample)
+            bboxes = sample["bboxxywh"].split("|")
+            bbox_meta = dataset.bbox_meta_data.loc[sample["dicom_id"]]
+            img_size = [bbox_meta["image_width"], bbox_meta["image_height"]]
+            #bbox_img = torch.zeros(img_size)
+            for i in range(len(bboxes)):
+                bbox = [int(box) for box in bboxes[i].split("-")]
+                bboxes[i] = bbox
+            #    x, y, w, h = tuple(bbox)
+            #    bbox_img[x:(x + w), y: (y + h)] = 1
+
+            ground_truth_img = sample["bbox_img"].float()
+
+            #reconstructed_large = xrec[i].clamp(-1, 1)
+            #reconstructed_large = (reconstructed_large + 1)/2
+            #reconstructed = resize_to_latent_size(reconstructed_large)
 
             binary_mask = repeat(mask_suggestor(sample, key="preliminary_mask"), "h w -> 3 h w")
-            binary_mask_large = resize_to_input_size(binary_mask)
+            binary_mask_large = resize_to_imag_size(binary_mask.float()).round()
 
-            bbox_img = torch.zeros(img.size()[1:])
-            bbox_img[x:(x + w), y: (y + h)] = 1
-            iou, miou, distance, bboxpred = compute_metrics(bbox, binary_mask_large.float().mean(axis=0))
+            prelim_mask = (sample["preliminary_mask"] - sample["preliminary_mask"].min())/(sample["preliminary_mask"].max() - sample["preliminary_mask"].min())
+            prelim_mask_large = resize_to_imag_size(prelim_mask.unsqueeze(dim=0)).squeeze(dim=0)
+
+
+
             results["rel_path"].append(sample["rel_path"])
+            results["finding_labels"].append(sample["finding_labels"])
+            results["cnr"].append(float(contrast_to_noise_ratio(ground_truth_img, prelim_mask_large)))
+            prediction, center_of_mass_prediction, bbox_gmm_pred = compute_prediction_from_binary_mask(binary_mask_large[0])
+            iou = torch.tensor(jaccard_score(ground_truth_img.flatten(), binary_mask_large[0].flatten()))
+            iou_rev = torch.tensor(jaccard_score(1 - ground_truth_img.flatten(), 1 - binary_mask_large[0].flatten()))
             results["iou"].append(float(iou))
-            results["miou"].append(float(miou))
-            results["distance"].append(float(distance))
-            results["Finding Label"].append(sample["bboxlabel"])
+            results["miou"].append(float((iou + iou_rev)/2))
+
+            bboxiou = torch.tensor(jaccard_score(ground_truth_img.flatten(), prediction.flatten()))
+            bboxiou_rev = torch.tensor(jaccard_score(1 - ground_truth_img.flatten(), 1 - prediction.flatten()))
+            results["bboxiou"].append(float(bboxiou))
+            results["bboxmiou"].append(float((bboxiou + bboxiou_rev)/2))
+
+            if len(bboxes) > 1:
+                results["distance"].append(np.nan)
+            else:
+                _, center_of_mass, _ = compute_prediction_from_binary_mask(ground_truth_img)
+                distance = np.sqrt((center_of_mass[0] - center_of_mass_prediction[0]) ** 2 +
+                                   (center_of_mass[1] - center_of_mass_prediction[1]) ** 2
+                                   )
+                results["distance"].append(float(distance))
+
+
+            argmax_idx = np.unravel_index(prelim_mask_large.argmax(), prelim_mask_large.size())
+            mode_is_outlier = ground_truth_img[argmax_idx]
+            results["top1"].append(float(mode_is_outlier))
+
+            auc = roc_auc_score(ground_truth_img.flatten(), prelim_mask_large.flatten())
+            results["aucroc"].append(auc)
 
             if log_some > 0:
                 logger.info(f"Logging example bboxes and attention maps to {opt.log_dir}")
-                img = (sample["img"] + 1) / 2
+                img = (sample["img_raw"] + 1) / 2
 
-                prelim_mask = sample["preliminary_mask"]
-                prelim_mask_large = resize_to_input_size(repeat(prelim_mask.squeeze(), "h w -> 3 h w"))
-                prelim_mask_large = (prelim_mask_large - prelim_mask_large.min())/(prelim_mask_large.max() - prelim_mask_large.min())
-                prelim_mask_large = resize_to_input_size(prelim_mask_large)
+                ground_truth_img = repeat(ground_truth_img, "h w -> 3 h w")
+                prelim_mask_large = repeat(prelim_mask_large, "h w -> 3 h w")
 
-                binary_mask_large = apply_rect(binary_mask_large, x, y, h, w)
-                binary_mask_large = apply_rect(binary_mask_large, bboxpred[0], bboxpred[2], (bboxpred[1] - bboxpred[0]), (bboxpred[3] - bboxpred[2]), color="blue")
+                #for bbox in bboxes:
+                #    x, y, w, h = tuple(bbox)
+                #    img = apply_rect(img, x, y, h, w)
+                #    prelim_mask_large = apply_rect(prelim_mask_large, x, y, h, w)
+                #    binary_mask_large = apply_rect(binary_mask_large, x, y, h, w)
+
+                #binary_mask_large = apply_rect(binary_mask_large, bbox_gmm_pred[0], bbox_gmm_pred[2], (bbox_gmm_pred[1] - bbox_gmm_pred[0]), (bbox_gmm_pred[3] - bbox_gmm_pred[2]), color="blue")
 
                 fig = plt.figure(figsize=(6, 20))
                 grid = ImageGrid(fig, 111,
-                                 nrows_ncols=(3, 1),
+                                 nrows_ncols=(4, 1),
                                  axes_pad=0.1)
-                for j, ax, im in zip(np.arange(3), grid, [img, prelim_mask_large, binary_mask_large]):
+                for j, ax, im in zip(np.arange(4), grid, [img, img, binary_mask_large, ground_truth_img]): # 2nd img is below prelim mask
                     ax.imshow(rearrange(im, "c h w -> h w c"))
                     if j == 1:
-                        ax.imshow(prelim_mask_large.mean(axis=0), cmap="jet", alpha=0.3)
+                        ax.imshow(prelim_mask_large.mean(axis=0), cmap="jet", alpha=0.25)
+                        ax.scatter(argmax_idx[1], argmax_idx[0], s=100, c='red', marker='o')
                     ax.axis('off')
 
-                path = os.path.join(opt.log_dir, os.path.basename(sample["rel_path"]).rstrip(".png") + f"_{sample['bboxlabel']}")
+                path = os.path.join(opt.log_dir, os.path.basename(sample["rel_path"]).rstrip(".png") + f"_{sample['finding_labels']}")
                 logger.info(f"Logging to {path}")
                 plt.savefig(path + "_raw.png", bbox_inches="tight")
-                fig.suptitle(f"IoU: {float(iou):.3}, mIoU:{miou:.3}, distance (pixel): {distance:.3f}\n Red bbox is gt, blue is prediction")
-                plt.savefig(path + "_detailed.png", bbox_inches="tight")
+                #fig.suptitle(f"IoU: {float(iou):.3}, mIoU:{miou:.3}, distance (pixel): {distance:.3f}\n Red bbox is gt, blue is prediction")
+                #plt.savefig(path + "_detailed.png", bbox_inches="tight")
                 log_some -= 1
 
     df = pd.DataFrame(results)
     logger.info(f"Saving file with results to {opt.log_dir}")
     df.to_csv(os.path.join(opt.log_dir, "bbox_results.csv"))
+    mean_results = df.groupby("finding_labels").mean(numeric_only=True)
+    mean_results.to_csv(os.path.join(opt.log_dir, "bbox_results_means.csv"))
+    logger.info(df.mean())
+    logger.info(df.groupby("finding_labels").mean(numeric_only=True))
 
 
 if __name__ == '__main__':
@@ -285,7 +330,7 @@ if __name__ == '__main__':
     # make log dir (same as the one for the console log)
     log_dir = os.path.join(os.path.dirname(file_handler.baseFilename))
     setattr(opt, "log_dir", log_dir)
+    logger.info(f"Log dir: {log_dir}")
     logger.debug(f"Current file: {__file__}")
     log_experiment(logger, args, opt.config_path)
-
     main(opt)

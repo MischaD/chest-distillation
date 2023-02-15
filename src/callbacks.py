@@ -212,11 +212,11 @@ class ImageLogger(Callback):
 
                     txt_label = batch["label_text"][i]
                     token_lens = pl_module.cond_stage_model.compute_word_len(txt_label.split(" "))
-                    token_positions = np.cumsum(token_lens)
-                    token_positions = token_positions - token_positions[0]
-                    for word, token_pos in zip(txt_label.split(" "), token_positions):
+                    token_positions = list(np.cumsum(token_lens) + 1)
+                    token_positions = [1,] + token_positions  #first one will always be 1
+                    for word, token_pos in zip(txt_label.split(" "), token_positions[:-1]):
                         ImageDraw.Draw(grid_img).text(
-                            ((1 + token_pos)*66 + 5, 0), # +5 just offset to look nicer, 66 because grid add pixels
+                            (token_pos*66 + 5, 0), # +5 just offset to look nicer, 66 because grid add pixels
                             word,
                             (255, 0, 0)
                         )
@@ -262,9 +262,9 @@ class ImageLogger(Callback):
         if (trainer.current_epoch == 0 and self.log_first_step) or (trainer.current_epoch > 0 and trainer.current_epoch % self.epoch_frequency == 0):
             if not self.disabled:
                 #logger.info("Start sampling of image.")
-                #self.log_img(pl_module, batch, batch_idx, split="val") # logs image trained from scratch
+                #self.log_img(pl_module, batch, batch_idx, split="val", inpaint=False) # logs image trained from scratch
                 logger.info("Start sampling with attention.")
-                self.log_attention(pl_module, batch, batch_idx, split="val") # logs attention maps if we condtion on data from validation set
+                self.log_attention(pl_module, batch, batch_idx, split="val", inpaint=False) # logs attention maps if we condtion on data from validation set
 
 
 class CUDACallback(Callback):

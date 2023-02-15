@@ -31,6 +31,17 @@ dataset_args_val = dict(
     preload=True,
 )
 
+dataset_args_test = dict(
+    dataset="chestxraymimicbbox",
+    base_dir=data_dir,
+    split=DatasetSplit("mscxr"),
+    #0-1133 10d6f749d36ca86d83cdd19bca06a7e9d52a08b5
+    #limit_dataset=[0, 12],
+    preload=True,
+    save_original_images=True,
+)
+
+
 # dataset
 C=4 # latent channels
 H=512
@@ -46,11 +57,11 @@ scale = 4
 synthesis_steps = 75
 
 # dataloading
-batch_size=16
+batch_size=8
 num_workers=1
 
 #trainer
-max_steps=60001#just to make sure 60k is saved
+max_steps=10001#just to make sure 60k is saved
 checkpoint_save_frequency=10000
 num_nodes=1
 

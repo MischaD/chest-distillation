@@ -8,7 +8,7 @@ root = "/vol/ideadata/ed52egek"
 data_dir = os.path.join(root, "data/mimic/jpg/physionet.org/files/mimic-cxr-jpg/2.0.0/") # data
 work_dir = os.path.join(root, "pycharm/chest-distillation") # code, config
 ckpt = os.path.join(root, "diffusionmodels/latentdiffusion/512-base-ema.ckpt")
-ckpt_ft = os.path.join(root, "diffusionmodels/models_finetuned/chest/chest_finetuned.ckpt")
+ckpt_ft = os.path.join(root, "diffusionmodels/chest/finetune-sd-128/2023-02-10T13-13-01/global_step=10000.ckpt")
 
 config_path = os.path.join(work_dir, "experiments/chestxray/configs/v2-chest-training.yaml")
 out_dir = os.path.join(data_dir, "preliminary_masks/", "chestxrayofpleuraleffusion")
@@ -36,7 +36,10 @@ dataset_args_test = dict(
     dataset="chestxraymimicbbox",
     base_dir=data_dir,
     split=DatasetSplit("mscxr"),
+    #0-1133 10d6f749d36ca86d83cdd19bca06a7e9d52a08b5
+    limit_dataset=[0, 12],
     preload=True,
+    save_original_images=True,
 )
 
 

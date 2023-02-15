@@ -84,7 +84,6 @@ class FOBADataset(Dataset):
         if self.limit_dataset is not None:
             self.data = self.data[self.limit_dataset[0]:min(self.limit_dataset[1], len(self.data))]
 
-
     def _get_split(self, data, splits):
         """Creates split for data"""
         if self.split == DatasetSplit.all:
@@ -126,6 +125,10 @@ class FOBADataset(Dataset):
         if entry["inpainted_image"].sum() < 100:
             logger.warn("Redo sampling for missing labels")
             return self._load_images(np.random.randint(len(self)))
+        return entry
+
+    def add_preliminary_to_sample(self, entry):
+        entry["preliminary_mask"] = torch.load(os.path.join(self._preliminary_masks_path, entry["rel_path"] + ".pt"))
         return entry
 
     def add_preliminary_masks(self, base_path=None):

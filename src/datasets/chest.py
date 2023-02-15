@@ -140,6 +140,7 @@ class MimicCXRDataset(FOBADataset):
         self._build_dataset()
         self.opt = opt
         self._precomputed_path = None
+        self._save_original_images = dataset_args.get("save_original_images", False)
 
     @property
     def precomputed_path(self):
@@ -210,6 +211,9 @@ class MimicCXRDataset(FOBADataset):
     def precompute(self, model):
         #load entries
         entries = {}
+        if self._save_original_images:
+            entries["img_raw"] = []
+
         for i in tqdm(range(len(self)), "Precomputing Dataset"):
             entry = self._load_images([i])
             for k in entry.keys():
@@ -219,7 +223,12 @@ class MimicCXRDataset(FOBADataset):
                 entries[k].append(entry[k])
 
             # preprocess --> 1 x 8 x 64 x 64 diag gaussian latent
-            entries["img"][i] = self.compute_latent(entry["img"], model)
+            z = self.compute_latent(entry["img"], model)
+            if self._save_original_images:
+                entries["img_raw"].append(entry["img"])
+                entries["img"][i] = z
+            else:
+                entries["img"][i] = z
 
         # save entries
         entry_keys = list(entries.keys())
@@ -295,6 +304,43 @@ class MimicCXRDatasetMSBBOX(MimicCXRDataset):
 
         if self.limit_dataset is not None:
             self.data = self.data[self.limit_dataset[0]:min(self.limit_dataset[1], len(self.data))]
+
+    def apply_filter_for_disease_in_txt(self):
+        logger.warning(f"Filtering dataset to only contain impressions where the disease itself is mentioned.")
+        data = []
+        for entry in self.data:
+            dicom_id = os.path.basename(entry["rel_path"]).rstrip(".jpg")
+            meta_data_entry = self.bbox_meta_data.loc[dicom_id]
+            if isinstance(meta_data_entry, pd.DataFrame):
+                meta_data_entry = meta_data_entry[meta_data_entry["category_name"] == entry["finding_labels"]]
+                assert len(meta_data_entry) == 1
+                meta_data_entry = meta_data_entry.iloc[0]
+            from src.visualization.utils import MIMIC_STRING_TO_ATTENTION, word_to_slice
+
+            query_words = MIMIC_STRING_TO_ATTENTION[meta_data_entry["category_name"]]
+
+            # test if has different labels
+            label_txt_split = meta_data_entry["label_text"].split("|")
+            all_labels_equal = True
+            if len(label_txt_split) != 1:
+                for i in range(1, len(label_txt_split)):
+                    if label_txt_split[0] != label_txt_split[i]:
+                        all_labels_equal = False
+
+            label_txt = label_txt_split[0]
+
+            if not all_labels_equal:
+                logger.info(f"Dropping the following for different labels: {meta_data_entry['label_text']}")
+                continue
+
+            locations = word_to_slice(label_txt.split(" "), query_words)
+            if len(locations) >= 1:
+                data.append(entry)
+            else:
+                logger.info(f"Dropping the following for {meta_data_entry['category_name']}: {meta_data_entry['label_text']}")
+        old_len = len(self.data)
+        self.data = data
+        logger.info(f"Reduced dataset from {old_len} to {len(self.data)} due to filtering of diseases in txt")
 
     def _load_images(self, index):
         assert len(index)

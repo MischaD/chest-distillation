@@ -9,6 +9,25 @@ from mpl_toolkits.axes_grid1 import ImageGrid
 import matplotlib.pyplot as plt
 
 
+MIMIC_STRING_TO_ATTENTION={"Atelectasis":
+                               ["atelectasis", "atelectatic"],
+                           "Cardiomegaly":
+                               ["cardiomegaly", "cardiac", ], # enlarged, heart
+                           "Consolidation":
+                               ["consolidation", "consolidations"],
+                           "Edema":
+                            ["edema",],
+                           "Lung Opacity":
+                            ["opacity", "opacities", "opacification"],
+                           "Pleural Effusion":
+                           ["pleural", "effusion", "effusions"],
+                           "Pneumonia":
+                           ["opacities", "pneumonia", "opacity"],
+                           "Pneumothorax":
+                           ["pneumothorax",],
+                           }
+
+
 def model_out_to_grid(model, x, slice=None):
     x_decoded = []
     for i in range(len(x)):
@@ -87,3 +106,13 @@ def log_images_helper(logger, images: dict, prefix="", drop_samples=False):
         grid = make_grid(images[k], nrow=1)
         logger.log_image(key=prefix + k, images=[grid])
 
+
+def word_to_slice(label: list, query_words):
+    locations = []
+    query_words = [w.lower() for w in query_words]
+    label = [w.lower() for w in label]
+    for query_word in query_words:
+        for i, word in enumerate(label):
+            if query_word.lower() in word.lower():
+                locations.append(i)
+    return locations

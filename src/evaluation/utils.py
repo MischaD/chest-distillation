@@ -1,5 +1,7 @@
 from sklearn.metrics import jaccard_score
 import numpy as np
+import torch
+
 
 def compute_prediction_from_binary_mask(binary_prediction):
     binary_prediction = binary_prediction.to(torch.bool).numpy()
@@ -13,8 +15,7 @@ def compute_prediction_from_binary_mask(binary_prediction):
     return prediction, center_of_mass, (x1, x2, y1, y2)
 
 
-def compute_metrics(bbox, binary_prediction):
-    x, y, h, w = bbox
+def compute_metrics(x, y, h, w, binary_prediction):
     ground_truth_bbox_img = torch.zeros_like(binary_prediction)
     ground_truth_bbox_img[x:(x + w), y: (y + h)] = 1
 
