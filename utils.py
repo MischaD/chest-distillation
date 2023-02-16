@@ -27,6 +27,21 @@ def get_sample_model_args():
     parser.add_argument("--use_mscxrlabels", action="store_true", default=False, help="")
     return parser.parse_args()
 
+def get_comput_fid_args():
+    parser = argparse.ArgumentParser(description="Compute FID of dataset")
+    parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
+    parser.add_argument("EXP_NAME", type=str, help="Path to Experiment results")
+    parser.add_argument("path_src", type=str, help="Path to first dataset")
+    parser.add_argument("path_tgt", type=str, help="Path to second dataset")
+    parser.add_argument('--fid_model', type=str, default=50,
+                        help='Which model to use')
+    parser.add_argument('--batch-size', type=int, default=50,
+                        help='Batch size to use')
+    parser.add_argument('--num-workers', type=int,
+                        help=('Number of processes to use for data loading. '
+                              'Defaults to `min(8, num_cpus)`'))
+    return parser.parse_args()
+
 def get_train_args():
     parser = argparse.ArgumentParser(description="Compute Masks")
     parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
