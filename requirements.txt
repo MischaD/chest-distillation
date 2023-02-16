@@ -15,3 +15,4 @@ diffusers
 invisible-watermark
 open_clip_torch
 notebook
+torchxrayvision
