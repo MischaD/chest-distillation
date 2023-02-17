@@ -11,12 +11,8 @@ import datetime
 import torchxrayvision as xrv
 from src.evaluation.mssim import calc_ms_ssim_for_path
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("dataset", type=str, help="Path to dataset")
-    args = parser.parse_args()
-
-    mean, sd = calc_ms_ssim_for_path(args.dataset, n=100, trials=1)
+def main(opt):
+    mean, sd = calc_ms_ssim_for_path(opt.path, n=opt.n_samples, trials=opt.trials)
 
 
 if __name__ == '__main__':

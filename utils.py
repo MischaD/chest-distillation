@@ -49,6 +49,15 @@ def get_comput_fid_args():
                               'Defaults to `min(8, num_cpus)`'))
     return parser.parse_args()
 
+def get_comput_fid_args():
+    parser = argparse.ArgumentParser(description="Compute MS-SSIM of dataset")
+    parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
+    parser.add_argument("EXP_NAME", type=str, help="Path to Experiment results")
+    parser.add_argument("--ckpt", type=str, default="to generate_propmts with")
+    parser.add_argument("--n_samples", type=int, default=100)
+    parser.add_argument("--trials", type=int, default=1)
+    return parser.parse_args()
+
 def get_train_args():
     parser = argparse.ArgumentParser(description="Compute Masks")
     parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")

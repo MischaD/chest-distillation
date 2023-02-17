@@ -10,6 +10,10 @@ from torchmetrics import MultiScaleStructuralSimilarityIndexMeasure
 from torchvision.transforms import Resize
 from torchvision.transforms import InterpolationMode
 from src.datasets.utils import path_to_tensor
+import pandas as pd
+import pathlib
+from src.evaluation.xrv_fid import IMAGE_EXTENSIONS
+
 
 
 def calc_ms_ssim(imgs):
@@ -25,21 +29,30 @@ def calc_ms_ssim(imgs):
     return scores
 
 
-def calc_ms_ssim_for_path(path, n=4, trials=1):
+def calc_ms_ssim_for_path(path, n=4, trials=1, limit_dataset=100):
     logger.info(f"Computing Mean and SDV of MSSSIM with n={n} for path: {path}")
     logger.info(f"Repeating {trials} times.")
 
+    if path.endswith(".csv"):
+        df = pd.read_csv(path)
+        files = df["path"].to_list()
+    else:
+        path = pathlib.Path(path)
+        files = [os.path.join(path, file) for ext in IMAGE_EXTENSIONS
+                 for file in path.rglob('*.{}'.format(ext))]
+
+    #assert len(files) <= limit_dataset, "Limit dataset to 5000 images"
+    files = files[:limit_dataset]
+    logger.info(f"Dataset size: {len(files)}")
+    imgs = torch.stack([path_to_tensor(x, normalize=False) for x in files])
+    #imgs = imgs.squeeze()
+
     scores = []
     for _ in tqdm(range(trials)):
-        img_list_real = os.listdir(path)
-        random.shuffle(img_list_real)
-        img_list_real = img_list_real[:n]
-
-        imgs_real = torch.stack([path_to_tensor(os.path.join(path, x), normalize=False).to("cuda") for x in img_list_real])
-
-        score = calc_ms_ssim(imgs_real)
+        torch.randperm(imgs.shape[0])
+        subset = imgs[:n]
+        score = calc_ms_ssim(subset)
         scores.append(score)
-        print(len(scores))
 
     scores = torch.cat(scores)
     filtered_scores = scores[~scores.isnan()]
