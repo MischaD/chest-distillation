@@ -15,9 +15,8 @@ export https_proxy=http://proxy.rrze.uni-erlangen.de:80
 #
 #load required modules (compiler, ...)
 module load python/3.9-anaconda
-module load cudnn/8.2.4.15-11.4
-module load cuda/11.4
-#
+moduel load cuda
+
 # anaconda
 source activate chest
 

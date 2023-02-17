@@ -264,7 +264,7 @@ class ImageLogger(Callback):
                 #logger.info("Start sampling of image.")
                 #self.log_img(pl_module, batch, batch_idx, split="val", inpaint=False) # logs image trained from scratch
                 logger.info("Start sampling with attention.")
-                self.log_attention(pl_module, batch, batch_idx, split="val", inpaint=False) # logs attention maps if we condtion on data from validation set
+                self.log_attention(pl_module, batch, batch_idx, split="val") # logs attention maps if we condtion on data from validation set
 
 
 class CUDACallback(Callback):

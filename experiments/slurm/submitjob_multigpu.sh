@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#SBATCH --time=24:00:00
+#SBATCH --time=01:00:00
 #SBATCH --job-name=SDv2_Baseline_BatchSize128
 #SBATCH --ntasks-per-node=8
 #SBATCH --gres=gpu:a100:8
@@ -13,11 +13,8 @@ unset SLURM_EXPORT_ENV
 export http_proxy=http://proxy.rrze.uni-erlangen.de:80
 export https_proxy=http://proxy.rrze.uni-erlangen.de:80
 
-#
-#load required modules (compiler, ...)
 module load python/3.9-anaconda
-module load cudnn/8.2.4.15-11.4
-module load cuda/11.4
+moduel load cuda
 #
 # anaconda
 source activate chest
