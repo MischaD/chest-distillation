@@ -18,85 +18,113 @@ from tqdm import tqdm
 from PIL import Image
 from pytorch_lightning import seed_everything
 import time
+import json
 import random
 import numpy as np
 from einops import rearrange
-
+from src.datasets.sample_dataset import get_mscxr_synth_dataset
+from src.evaluation.mssim import calc_ms_ssim_for_path_ordered, calc_ms_ssim_for_path
 
 def main(opt):
     #mean, sd = calc_ms_ssim_for_path(opt.path, n=opt.n_samples, trials=opt.trials)
     if not hasattr(opt, "img_dir") or opt.img_dir is None:
-        img_dir = os.path.join(opt.log_dir, "generated")
+        img_dir = os.path.join(opt.log_dir, "ms_ssim")
     else:
         img_dir = opt.img_dir
 
     logger.info(f"Saving Images to {img_dir}")
     config = OmegaConf.load(f"{opt.config_path_inference}")
-    model = load_model_from_config(config, f"{opt.ckpt}")
 
-    device = torch.device("cuda")
-    model = model.to(device)
+    if not os.path.exists(img_dir):
+        os.makedirs(img_dir, exist_ok=True)
+        model = load_model_from_config(config, f"{opt.ckpt}")
 
-    if opt.use_mscxrlabels:
-        dataset = get_dataset(opt, "test")
-        dataset.load_precomputed(model)
-        synth_dataset, labels = get_mscxr_synth_dataset(opt, dataset)
-    else:
-        dataset = get_dataset(opt, "testp19")
-        dataset.load_precomputed(model)
-        synth_dataset, labels = get_mscxr_synth_dataset(opt, dataset, finding_key="impression", label_key="finding_labels")
+        device = torch.device("cuda")
+        model = model.to(device)
 
+        if opt.use_mscxrlabels:
+            dataset = get_dataset(opt, "test")
+            dataset.load_precomputed(model)
+            synth_dataset, labels = get_mscxr_synth_dataset(opt, dataset)
+        else:
+            dataset = get_dataset(opt, "testp19")
+            dataset.load_precomputed(model)
+            synth_dataset, labels = get_mscxr_synth_dataset(opt, dataset, finding_key="impression",
+                                                            label_key="finding_labels")
 
-    os.makedirs(img_dir, exist_ok=True)
-    for label in labels:
-        os.makedirs(os.path.join(img_dir, label), exist_ok=True)
+        actual_batch_size = opt.trial_size
+        batch_size = 1
 
-    batch_size = opt.batch_size
+        if opt.plms:
+            sampler = PLMSSampler(model)
+        else:
+            sampler = DDIMSampler(model)
 
-    if opt.plms:
-        sampler = PLMSSampler(model)
-    else:
-        sampler = DDIMSampler(model)
+        seed_everything(time.time())
 
-    seed_everything(time.time())
+        batched_dataset = [synth_dataset[i:i+batch_size] for i in range(0, len(synth_dataset), batch_size)]
+        prompt_list = set()
+        with torch.no_grad():
+            with autocast("cuda"):
+                with model.ema_scope():
+                    for sample_num in range(len(batched_dataset)):
+                        samples = batched_dataset[sample_num]
+                        prompts = [list(x.values())[0] for x in samples]
+                        classes = [list(x.keys())[0] for x in samples]
+                        prompt = prompts[0]
+                        if prompt in prompt_list:
+                            continue
+                        else:
+                            prompt_list.add(prompt)
 
-    batched_dataset = [synth_dataset[i:i+4] for i in range(0, len(synth_dataset), batch_size)]
+                        prompts = prompts * actual_batch_size
+                        #classes = classes * actual_batch_size
 
-    with torch.no_grad():
-        with autocast("cuda"):
-            with model.ema_scope():
-                for samples in tqdm(batched_dataset, desc="data"):
-                    uc = None
-                    if opt.scale != 1.0:
-                        uc = model.get_learned_conditioning(batch_size * [""])
-                    prompts = [list(x.values())[0] for x in samples]
-                    classes = [list(x.keys())[0] for x in samples]
-                    c = model.get_learned_conditioning(prompts)
+                        c = model.get_learned_conditioning(prompts)
+                        uc = None
+                        if opt.scale != 1.0:
+                            uc = model.get_learned_conditioning(actual_batch_size * [""])
 
-                    start_code = torch.randn([batch_size, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
+                        start_code = torch.randn([actual_batch_size, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
+                        shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
+                        output, _ = sampler.sample(S=opt.ddim_steps,
+                                                    conditioning=c,
+                                                    batch_size=len(prompts),
+                                                    shape=shape,
+                                                    verbose=False,
+                                                    unconditional_guidance_scale=opt.scale,
+                                                    unconditional_conditioning=uc,
+                                                    x_T=start_code)
 
-                    shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
-                    output, _ = sampler.sample(S=opt.ddim_steps,
-                                                conditioning=c,
-                                                batch_size=len(samples),
-                                                shape=shape,
-                                                verbose=False,
-                                                unconditional_guidance_scale=opt.scale,
-                                                unconditional_conditioning=uc,
-                                                x_T=start_code)
+                        output = model.decode_first_stage(output)
+                        output = torch.clamp((output + 1.0) / 2.0, min=0.0, max=1.0)
+                        output = output.cpu()
+                        base_count_dir = len(os.listdir(img_dir))
+                        dir_name = f"{base_count_dir:05}"
+                        dir_path = os.path.join(img_dir, dir_name)
+                        os.makedirs(dir_path,exist_ok=True)
 
-                    output = model.decode_first_stage(output)
-                    output = torch.clamp((output + 1.0) / 2.0, min=0.0, max=1.0)
+                        for i in range(len(output)):
+                            base_count = len(os.listdir(dir_path))
+                            sample = 255. * rearrange(output[i].numpy(), 'c h w -> h w c')
+                            Image.fromarray(sample.astype(np.uint8)).save(
+                                os.path.join(dir_path, f"{base_count:05}.png"))
 
-                    output = output.cpu()
-                    for i in range(len(output)):
-                        sample_path = os.path.join(os.path.join(img_dir, classes[i]))
-                        base_count = len(os.listdir(sample_path))
-                        sample = 255. * rearrange(output[i].numpy(), 'c h w -> h w c')
-                        Image.fromarray(sample.astype(np.uint8)).save(
-                            os.path.join(sample_path, f"{base_count:05}.png"))
+                        with open(os.path.join(dir_path, "prompt.txt"), 'w') as file:
+                            # Write a string to the file
+                            file.write("\n".join(prompts))
 
+                        logger.info(f"Computed trial set {base_count_dir+1} out of {opt.n_sample_sets} for prompt {prompt}")
+                        if base_count_dir+1 == opt.n_sample_sets:
+                            break
 
+    if len(os.listdir(img_dir)) < opt.n_sample_sets:
+        logger.warning(f"Found fewer samples than specified. Fallback to using fewer samples. Given: {os.listdir('img_dir')}, Needed: {opt.n_sample_sets}")
+
+    mean, sd = calc_ms_ssim_for_path_ordered(img_dir, trial_size=opt.trial_size)
+    with open(os.path.join(img_dir, "ms_ssim_results.json"), "w") as file:
+        as_str =  f"$.{round(float(mean)*100):02d} \pm .{round(float(sd)*100):02d}$"
+        json.dump({"mean":float(mean), "sdv":float(mean), "as_string":as_str}, file)
 
 
 

@@ -61,7 +61,7 @@ def main(opt):
 
     seed_everything(time.time())
 
-    batched_dataset = [synth_dataset[i:i+4] for i in range(0, len(synth_dataset), batch_size)]
+    batched_dataset = [synth_dataset[i:i+batch_size] for i in range(0, len(synth_dataset), batch_size)]
 
     with torch.no_grad():
         with autocast("cuda"):

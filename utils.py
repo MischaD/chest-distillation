@@ -54,8 +54,11 @@ def get_comput_fid_args():
     parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
     parser.add_argument("EXP_NAME", type=str, help="Path to Experiment results")
     parser.add_argument("--ckpt", type=str, default="to generate_propmts with")
-    parser.add_argument("--n_samples", type=int, default=100)
-    parser.add_argument("--trials", type=int, default=1)
+    parser.add_argument("--n_sample_sets", type=int, default=100)
+    parser.add_argument("--trial_size", type=int, default=4)
+    parser.add_argument("--use_mscxrlabels", action="store_true", default=False, help="If set, then we use shortned impressions from mscxr")
+    parser.add_argument("--img_dir", type=str, default=None,
+                        help="dir to save images in. Default will be inside log dir and should be used!")
     return parser.parse_args()
 
 def get_train_args():
