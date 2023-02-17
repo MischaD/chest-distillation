@@ -118,6 +118,13 @@ def main(opt):
     config = OmegaConf.load(f"{opt.config_path}")
     lightning_config = config.pop("lightning", OmegaConf.create())
 
+    if hasattr(opt, "cond_stage_trainable"):
+        config["model"]["params"]["cond_stage_trainable"] = opt.cond_stage_trainable
+
+    config["model"]["base_learning_rate"] = opt.learning_rate
+    config["model"]["params"]["optimizer_type"] = opt.optimizer_type
+    logger.info(f"Setting learning rate to {opt.learning_rate} and optimizer to {opt.optimizer_type}")
+
     model = load_model_from_config(config, f"{opt.ckpt}")
 
     if not ckpt == "":

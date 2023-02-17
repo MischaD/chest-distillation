@@ -20,7 +20,7 @@ from tqdm import tqdm
 from torchvision.utils import make_grid
 from pytorch_lightning.utilities import rank_zero_only
 from omegaconf import ListConfig
-
+from log import logger
 from src.ldm.util import log_txt_as_img, exists, default, ismap, isimage, mean_flat, count_params, instantiate_from_config
 from src.ldm.modules.ema import LitEma
 from src.ldm.modules.distributions.distributions import normal_kl, DiagonalGaussianDistribution
@@ -79,6 +79,7 @@ class DDPM(pl.LightningModule):
                  ucg_training=None,
                  reset_ema=False,
                  reset_num_ema_updates=False,
+                 optimizer_type="adam",
                  ):
         super().__init__()
         assert parameterization in ["eps", "x0", "v"], 'currently only supporting "eps" and "x0" and "v"'
@@ -92,6 +93,7 @@ class DDPM(pl.LightningModule):
         self.channels = channels
         self.use_positional_encodings = use_positional_encodings
         self.model = DiffusionWrapper(unet_config, conditioning_key)
+        self.optimizer_type = optimizer_type
         count_params(self.model, verbose=True)
         self.use_ema = use_ema
         if self.use_ema:
@@ -643,8 +645,9 @@ class LatentDiffusion(DDPM):
             assert config != '__is_first_stage__'
             assert config != '__is_unconditional__'
             model = instantiate_from_config(config)
-            self.cond_stage_model = model
-        #self.cond_stage_model.to("cuda")
+            self.cond_stage_model = model.train()
+            for param in self.cond_stage_model.parameters():
+                param.requires_grad = True
 
     def _get_denoise_row_from_list(self, samples, desc='', force_no_decoder_quantization=False):
         denoise_row = []
@@ -1292,11 +1295,22 @@ class LatentDiffusion(DDPM):
         params = list(self.model.parameters())
         if self.cond_stage_trainable:
             print(f"{self.__class__.__name__}: Also optimizing conditioner params!")
-            params = params + list(self.cond_stage_model.parameters())
+            cond_stage_params = list(self.cond_stage_model.parameters())
+            for cond_stage_param in cond_stage_params:
+                cond_stage_param.require_grad = True
+            params = params + cond_stage_params
         if self.learn_logvar:
             print('Diffusion model optimizing logvar')
             params.append(self.logvar)
-        opt = torch.optim.AdamW(params, lr=lr)
+        if self.optimizer_type == "adam":
+            logger.info("Using AdamW optimizer")
+            opt = torch.optim.AdamW(params, lr=lr)
+        elif self.optimizer_type == "lion":
+            from lion_pytorch import Lion
+            logger.info("Using Lion optimizer")
+            opt = Lion(params, lr=lr)
+        else:
+            raise NotImplementedError(f"Optimizer type {self.optimizer_type} not implemented. (adam, lion)")
         if self.use_scheduler:
             assert 'target' in self.scheduler_config
             scheduler = instantiate_from_config(self.scheduler_config)
