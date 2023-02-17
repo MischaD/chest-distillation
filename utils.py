@@ -42,8 +42,6 @@ def get_comput_fid_args():
     parser.add_argument("EXP_NAME", type=str, help="Path to Experiment results")
     parser.add_argument("path_src", type=str, help="Path to first dataset")
     parser.add_argument("path_tgt", type=str, help="Path to second dataset")
-    parser.add_argument('--fid_model', type=str, default=50,
-                        help='Which model to use')
     parser.add_argument('--batch-size', type=int, default=50,
                         help='Batch size to use')
     parser.add_argument('--num-workers', type=int,

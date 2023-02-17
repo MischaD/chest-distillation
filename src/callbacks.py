@@ -261,8 +261,6 @@ class ImageLogger(Callback):
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
         if (trainer.current_epoch == 0 and self.log_first_step) or (trainer.current_epoch > 0 and trainer.current_epoch % self.epoch_frequency == 0):
             if not self.disabled:
-                #logger.info("Start sampling of image.")
-                #self.log_img(pl_module, batch, batch_idx, split="val", inpaint=False) # logs image trained from scratch
                 logger.info("Start sampling with attention.")
                 self.log_attention(pl_module, batch, batch_idx, split="val") # logs attention maps if we condtion on data from validation set
 
