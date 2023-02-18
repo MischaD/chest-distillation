@@ -64,5 +64,7 @@ model:
     cond_stage_config:
       target: src.ldm.modules.encoders.modules.FrozenOpenCLIPEmbedder
       params:
-        freeze: True
         layer: "penultimate"
+        one_hot_encoded: False
+        use_invariance_token: False
+        single_healthy_class_token: False
