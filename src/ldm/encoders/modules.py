@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.utils.checkpoint import checkpoint
 
 from transformers import T5Tokenizer, T5EncoderModel, CLIPTokenizer, CLIPTextModel
-
+from log import logger
 import open_clip
 from src.ldm.util import default, count_params
 
@@ -140,17 +140,15 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
         "last",
         "penultimate"
     ]
-    def __init__(self, arch="ViT-H-14", version="laion2b_s32b_b79k", device="cuda", max_length=77, layer="last", one_hot_encoded=False, use_invariance_token=False, single_healthy_class_token=False):
+    def __init__(self, arch="ViT-H-14", version="laion2b_s32b_b79k", device="cuda", max_length=77, layer="last", one_hot_encoded=False, append_invariance_tokens=False, single_healthy_class_token=False):
         super().__init__()
         assert layer in self.LAYERS
-        model, _, _ = open_clip.create_model_and_transforms(arch, device=torch.device('cpu'), pretrained=version)
+        model, _, _ = open_clip.create_model_and_transforms(arch, device=torch.device('cpu'), pretrained=version, cache_dir="./clip/")
         del model.visual
         self.model = model
 
         self.device = device
         self.max_length = max_length
-        if freeze:
-            self.freeze()
         self.layer = layer
         if self.layer == "last":
             self.layer_idx = 0
@@ -159,13 +157,35 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
         else:
             raise NotImplementedError()
 
+        self.one_hot_encoded = one_hot_encoded
+        self.append_invariance_tokens = append_invariance_tokens
+        self.single_healthy_class_token = single_healthy_class_token
+        self.ohe_mapping = {}
+
+    def set_ohe_mapping(self, mapping):
+        logger.info(f"Setting Ohe Mapping to {mapping}")
+        self.ohe_mapping = mapping
+
     def freeze(self):
         self.model = self.model.eval()
         for param in self.parameters():
             param.requires_grad = False
 
+    def compute_word_len(self, words):
+        if not isinstance(words, list):
+            words = list(words)
+        assert isinstance(words[0], str)
+        outs = open_clip.tokenize(words)
+        lens = []
+        for out in outs:
+            lens.append(int(sum(out != 0) - 2))
+        return lens
+
     def forward(self, text):
-        tokens = open_clip.tokenize(text)
+        if not self.one_hot_encoded:
+            tokens = open_clip.tokenize(text)
+        else:
+            tokens = self.ohe_mapping[text]
         z = self.encode_with_transformer(tokens.to(self.device))
         return z
 
@@ -190,23 +210,4 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
 
     def encode(self, text):
         return self(text)
-
-
-class FrozenCLIPT5Encoder(AbstractEncoder):
-    def __init__(self, clip_version="openai/clip-vit-large-patch14", t5_version="google/t5-v1_1-xl", device="cuda",
-                 clip_max_length=77, t5_max_length=77):
-        super().__init__()
-        self.clip_encoder = FrozenCLIPEmbedder(clip_version, device, max_length=clip_max_length)
-        self.t5_encoder = FrozenT5Embedder(t5_version, device, max_length=t5_max_length)
-        print(f"{self.clip_encoder.__class__.__name__} has {count_params(self.clip_encoder)*1.e-6:.2f} M parameters, "
-              f"{self.t5_encoder.__class__.__name__} comes with {count_params(self.t5_encoder)*1.e-6:.2f} M params.")
-
-    def encode(self, text):
-        return self(text)
-
-    def forward(self, text):
-        clip_z = self.clip_encoder.encode(text)
-        t5_z = self.t5_encoder.encode(text)
-        return [clip_z, t5_z]
-
 

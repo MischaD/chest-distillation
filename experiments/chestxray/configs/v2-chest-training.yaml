@@ -16,6 +16,7 @@ model:
     monitor: val/loss_simple_ema
     scale_factor: 0.18215
     use_ema: True
+    attention_regularization: 0
 
     scheduler_config: # 10000 warmup steps
       target: src.ldm.lr_scheduler.LambdaLinearScheduler
@@ -72,11 +73,11 @@ model:
           target: torch.nn.Identity
 
     cond_stage_config:
-      target: src.ldm.modules.encoders.modules.FrozenOpenCLIPEmbedder
+      target: src.ldm.encoders.modules.FrozenOpenCLIPEmbedder
       params:
         layer: "penultimate"
         one_hot_encoded: False
-        use_invariance_token: False
+        append_invariance_tokens: False
         single_healthy_class_token: False
 
 

@@ -80,6 +80,7 @@ class DDPM(pl.LightningModule):
                  reset_ema=False,
                  reset_num_ema_updates=False,
                  optimizer_type="adam",
+                 attention_regularization=0.0,
                  ):
         super().__init__()
         assert parameterization in ["eps", "x0", "v"], 'currently only supporting "eps" and "x0" and "v"'
@@ -132,6 +133,8 @@ class DDPM(pl.LightningModule):
         self.logvar = torch.full(fill_value=logvar_init, size=(self.num_timesteps,))
         if self.learn_logvar:
             self.logvar = nn.Parameter(self.logvar, requires_grad=True)
+
+        self.attention_regularization = attention_regularization
 
         self.ucg_training = ucg_training or dict()
         if self.ucg_training:
@@ -792,7 +795,7 @@ class LatentDiffusion(DDPM):
             if cond_key is None: # different e.g. during validation
                 cond_key = self.cond_stage_key
             if cond_key != self.first_stage_key:
-                if cond_key in ["impression"]:
+                if cond_key in ["impression", "finding_labels"]:
                     xc = batch[cond_key]
                 elif cond_key in ["label_text"]:
                     assert isinstance(batch[cond_key], list)

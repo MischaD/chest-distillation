@@ -81,6 +81,7 @@ plms=False
 #ohe arguments
 ohe_args = dict(
     one_hot_encoded=False,
+    cond_stage_key="impression",
     append_invariance_tokens=False,
     single_healthy_class_token=False,
     attention_regularization=0.0,

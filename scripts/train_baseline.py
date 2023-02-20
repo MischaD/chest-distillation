@@ -121,10 +121,12 @@ def main(opt):
     if hasattr(opt, "cond_stage_trainable"):
         config["model"]["params"]["cond_stage_trainable"] = opt.cond_stage_trainable
 
-    #if hasattr(opt, "ohe_args"):
-        #config["model"]["params"]["attention_regularization"] = opt.ohe_args.pop("attention_regularization")
-        #for k, v in opt.ohe_args.items():
-        #    config["model"]["params"]["cond_stage_config"]["params"][k] = v
+    if hasattr(opt, "ohe_args"):
+        logger.info(f"Overwriting default arguments of config with {opt.ohe_args}")
+        config["model"]["params"]["attention_regularization"] = opt.ohe_args.pop("attention_regularization")
+        config["model"]["params"]["cond_stage_key"] = opt.ohe_args.pop("cond_stage_key")
+        for k, v in opt.ohe_args.items():
+            config["model"]["params"]["cond_stage_config"]["params"][k] = v
 
     config["model"]["base_learning_rate"] = opt.learning_rate
     config["model"]["params"]["optimizer_type"] = opt.optimizer_type
