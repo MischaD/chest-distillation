@@ -317,7 +317,6 @@ def main(opt):
         json.dump(json_results, file, indent=4)
 
 
-
 if __name__ == '__main__':
     args = get_compute_mask_args()
     log_dir = os.path.join(os.path.abspath("."), "log", args.EXP_NAME, datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S"))

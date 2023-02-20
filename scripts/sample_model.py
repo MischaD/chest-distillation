@@ -74,7 +74,7 @@ def main(opt):
                     if opt.scale != 1.0:
                         uc = model.get_learned_conditioning(len(c) * [""])
 
-                    start_code = torch.randn([batch_size, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
+                    start_code = torch.randn([len(c), opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
 
                     shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
                     output, _ = sampler.sample(S=opt.ddim_steps,

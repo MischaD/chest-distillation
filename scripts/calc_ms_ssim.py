@@ -4,8 +4,7 @@ from log import logger, log_experiment
 import os
 import logging
 import torch
-from utils import get_sample_model_args, make_exp_config, load_model_from_config, collate_batch, img_to_viz, get_comput_fid_args
-
+from utils import get_sample_model_args, make_exp_config, load_model_from_config, collate_batch, img_to_viz, get_comput_fid_args, get_compute_mssim
 from log import formatter as log_formatter
 from src.datasets import get_dataset
 import datetime
@@ -125,8 +124,6 @@ def main(opt):
     with open(os.path.join(img_dir, "ms_ssim_results.json"), "w") as file:
         as_str =  f"$.{round(float(mean)*100):02d} \pm .{round(float(sd)*100):02d}$"
         json.dump({"mean":float(mean), "sdv":float(mean), "as_string":as_str}, file)
-
-
 
 
 if __name__ == '__main__':
