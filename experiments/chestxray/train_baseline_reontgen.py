@@ -8,7 +8,6 @@ root = "/vol/ideadata/ed52egek"
 data_dir = os.path.join(root, "data/mimic/jpg/physionet.org/files/mimic-cxr-jpg/2.0.0/") # data
 work_dir = os.path.join(root, "pycharm/chest-distillation") # code, config
 ckpt = os.path.join(root, "diffusionmodels/latentdiffusion/512-base-ema.ckpt")
-ckpt_ft = os.path.join(root, "diffusionmodels/chest/finetune-sd-128/2023-02-10T13-13-01/global_step=10000.ckpt")
 
 config_path = os.path.join(work_dir, "experiments/chestxray/configs/v2-chest-training.yaml")
 config_path_inference = os.path.join(work_dir, "experiments/chestxray/configs/v2-inference.yaml")
@@ -20,15 +19,14 @@ dataset_args_train = dict(
     split=DatasetSplit("train"),
     #all 8b308d1ff146fc994156bb7f50775f99891bdd33
     #limit_dataset=[0, 10],#c0a08655ac43528158bef787cbfa549c447665dfb
-    #limit_dataset=[0, 100],
+    limit_dataset=[0, 100],
     preload=True,
 )
 dataset_args_val = dict(
     dataset="chestxraymimicbbox",
     base_dir=data_dir,
     split=DatasetSplit("mscxr"),
-    limit_dataset=[0, 64], #213851912adf554689226fff69183d41d96f6d44
-    #limit_dataset=[0, 10], #c0a08655ac43528158bef787cbfa549c447665df
+    limit_dataset=[0, 64],  # 6d79a86d53fe64e8ea8dca6e81be75b0edfd98c4
     preload=True,
 )
 dataset_args_testp19 = dict(
@@ -38,17 +36,16 @@ dataset_args_testp19 = dict(
     preload=True,
 )
 
+
 dataset_args_test = dict(
     dataset="chestxraymimicbbox",
     base_dir=data_dir,
     split=DatasetSplit("mscxr"),
     #0-1133 10d6f749d36ca86d83cdd19bca06a7e9d52a08b5
-    #limit_dataset=[0, 12],
+    limit_dataset=[0, 12],
     preload=True,
     save_original_images=True,
 )
-
-
 
 # dataset
 C=4 # latent channels

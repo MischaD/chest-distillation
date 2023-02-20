@@ -4,6 +4,7 @@ import pprint
 import time
 import os
 import cv2
+import json
 import pickle
 import numpy as np
 import pandas as pd
@@ -123,14 +124,11 @@ def main(opt):
     model = model.to(device)
     sampler = DDIMSampler(model)
 
-    os.makedirs(opt.out_dir, exist_ok=True)
     dataset.apply_filter_for_disease_in_txt()
     dataset.load_precomputed(model)
 
-    start_code = None
     seed_everything(opt.seed)
-    if opt.fixed_code:
-        start_code = torch.randn([opt.batch_size, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
+    start_code = torch.randn([opt.batch_size, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
 
     precision_scope = autocast
 
@@ -294,7 +292,8 @@ def main(opt):
                         ax.scatter(argmax_idx[1], argmax_idx[0], s=100, c='red', marker='o')
                     ax.axis('off')
 
-                path = os.path.join(opt.log_dir, os.path.basename(sample["rel_path"]).rstrip(".png") + f"_{sample['finding_labels']}")
+                path = os.path.join(opt.log_dir, "localization_examples", os.path.basename(sample["rel_path"]).rstrip(".png") + f"_{sample['finding_labels']}")
+                os.makedirs(path)
                 logger.info(f"Logging to {path}")
                 plt.savefig(path + "_raw.png", bbox_inches="tight")
                 #fig.suptitle(f"IoU: {float(iou):.3}, mIoU:{miou:.3}, distance (pixel): {distance:.3f}\n Red bbox is gt, blue is prediction")
@@ -308,6 +307,15 @@ def main(opt):
     mean_results.to_csv(os.path.join(opt.log_dir, "bbox_results_means.csv"))
     logger.info(df.mean())
     logger.info(df.groupby("finding_labels").mean(numeric_only=True))
+
+    with open(os.path.join(opt.log_dir, "bbox_results.json"), "w") as file:
+        json_results = {}
+        json_results["all"] = dict(df.mean(numeric_only=True))
+        for x in mean_results.index:
+            json_results[x] = dict(mean_results.loc[x])
+
+        json.dump(json_results, file, indent=4)
+
 
 
 if __name__ == '__main__':

@@ -68,11 +68,11 @@ def main(opt):
             with model.ema_scope():
                 for samples in tqdm(batched_dataset, desc="data"):
                     uc = None
-                    if opt.scale != 1.0:
-                        uc = model.get_learned_conditioning(batch_size * [""])
                     prompts = [list(x.values())[0] for x in samples]
                     classes = [list(x.keys())[0] for x in samples]
                     c = model.get_learned_conditioning(prompts)
+                    if opt.scale != 1.0:
+                        uc = model.get_learned_conditioning(len(c) * [""])
 
                     start_code = torch.randn([batch_size, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
 

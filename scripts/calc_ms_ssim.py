@@ -130,7 +130,7 @@ def main(opt):
 
 
 if __name__ == '__main__':
-    args = get_comput_fid_args()
+    args = get_compute_mssim()
     log_dir = os.path.join(os.path.abspath("."), "log", args.EXP_NAME, datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S"))
     os.makedirs(log_dir, exist_ok=True)
     file_handler = logging.FileHandler(os.path.join(log_dir, 'console.log'))

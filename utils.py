@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 
 def get_compute_mask_args():
-    parser = argparse.ArgumentParser(description="Compute Masks")
+    parser = argparse.ArgumentParser(description="Compute Masks for Localization Metrics")
     parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
     parser.add_argument("EXP_NAME", type=str, help="Path to Experiment results")
     parser.add_argument("--ckpt", type=str, default="train")
@@ -20,11 +20,15 @@ def get_compute_mask_args():
 
 
 def get_compute_mssim():
-    parser = argparse.ArgumentParser(description="Compute MS-SSIM")
+    parser = argparse.ArgumentParser(description="Compute MS-SSIM of dataset")
     parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
     parser.add_argument("EXP_NAME", type=str, help="Path to Experiment results")
-    parser.add_argument("path_src", type=str, help="Path to first dataset")
-    parser.add_argument("--ckpt", type=str, default="train")
+    parser.add_argument("--ckpt", type=str, default="to generate_propmts with")
+    parser.add_argument("--n_sample_sets", type=int, default=100)
+    parser.add_argument("--trial_size", type=int, default=4)
+    parser.add_argument("--use_mscxrlabels", action="store_true", default=False, help="If set, then we use shortned impressions from mscxr")
+    parser.add_argument("--img_dir", type=str, default=None,
+                        help="dir to save images in. Default will be inside log dir and should be used!")
     return parser.parse_args()
 
 def get_sample_model_args():
@@ -47,18 +51,6 @@ def get_comput_fid_args():
     parser.add_argument('--num-workers', type=int,
                         help=('Number of processes to use for data loading. '
                               'Defaults to `min(8, num_cpus)`'))
-    return parser.parse_args()
-
-def get_comput_fid_args():
-    parser = argparse.ArgumentParser(description="Compute MS-SSIM of dataset")
-    parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
-    parser.add_argument("EXP_NAME", type=str, help="Path to Experiment results")
-    parser.add_argument("--ckpt", type=str, default="to generate_propmts with")
-    parser.add_argument("--n_sample_sets", type=int, default=100)
-    parser.add_argument("--trial_size", type=int, default=4)
-    parser.add_argument("--use_mscxrlabels", action="store_true", default=False, help="If set, then we use shortned impressions from mscxr")
-    parser.add_argument("--img_dir", type=str, default=None,
-                        help="dir to save images in. Default will be inside log dir and should be used!")
     return parser.parse_args()
 
 def get_train_args():

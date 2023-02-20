@@ -8,10 +8,10 @@ root = "/home/atuin/b143dc/b143dc11"
 data_dir = os.path.join(root, "data/mimic/jpg/physionet.org/files/mimic-cxr-jpg/2.0.0/") # data
 work_dir = os.path.join(root, "pycharm/chest-distillation") # code, config
 ckpt = os.path.join(root, "diffusionmodels/latentdiffusion/512-base-ema.ckpt")
-ckpt_ft = os.path.join(root, "diffusionmodels/models_finetuned/chest/chest_finetuned.ckpt")
 
 config_path = os.path.join(work_dir, "experiments/chestxray/configs/v2-chest-training.yaml")
-out_dir = os.path.join(data_dir, "preliminary_masks/", "chestxrayofpleuraleffusion")
+config_path_inference = os.path.join(work_dir, "experiments/chestxray/configs/v2-inference.yaml")
+
 latent_attention_masks = False
 dataset_args_train = dict(
     dataset="chestxraymimic",
@@ -47,7 +47,6 @@ dataset_args_test = dict(
     save_original_images=True,
 )
 
-
 # dataset
 C=4 # latent channels
 H=512
@@ -58,13 +57,16 @@ f=8
 seed=4200
 ddim_eta = 0.0 # 0 corresponds to deterministic sampling
 scale = 4
+cond_stage_trainable=True
+optimizer_type="adam" # adam or lion
+learning_rate=5e-5
 
 # dataloading
 batch_size=16
 num_workers=1
 
 #trainer
-max_steps=80001#just to make sure 60k is saved
+max_steps=60001#just to make sure 60k is saved
 checkpoint_save_frequency=10000
 num_nodes=2
 precompute_latent_training_data=True

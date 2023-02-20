@@ -1,6 +1,6 @@
 #!/bin/bash -l
 #SBATCH --time=24:00:00
-#SBATCH --job-name=SDv2_Baseline_BatchSize-256
+#SBATCH --job-name=SDv2_Baseline_BatchSize-256_Learnable
 #SBATCH --ntasks-per-node=8
 #SBATCH --nodes=2
 #SBATCH --partition=a100
@@ -21,4 +21,4 @@ moduel load cuda
 
 source activate chest
 
-srun python scripts/train_baseline.py experiments/chestxray/train_baseline_reontgen_hpc_multinode.py finetune-sd-bs256
+srun python scripts/train_baseline.py experiments/chestxray/train_baseline_reontgen_hpc_multinode.py finetune-sd-bs256-learnable
