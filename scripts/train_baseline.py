@@ -6,6 +6,7 @@ import torchvision
 import pytorch_lightning as pl
 import os
 
+from src.ldm.encoders.modules import OpenClipDummyTokenizer
 from omegaconf import OmegaConf
 from torch.utils.data import random_split, DataLoader, Dataset, Subset
 from functools import partial
@@ -121,12 +122,11 @@ def main(opt):
     if hasattr(opt, "cond_stage_trainable"):
         config["model"]["params"]["cond_stage_trainable"] = opt.cond_stage_trainable
 
-    if hasattr(opt, "ohe_args"):
-        logger.info(f"Overwriting default arguments of config with {opt.ohe_args}")
-        config["model"]["params"]["attention_regularization"] = opt.ohe_args.pop("attention_regularization")
-        config["model"]["params"]["cond_stage_key"] = opt.ohe_args.pop("cond_stage_key")
-        for k, v in opt.ohe_args.items():
-            config["model"]["params"]["cond_stage_config"]["params"][k] = v
+    if hasattr(opt, "mlf_args"):
+        logger.info(f"Overwriting default arguments of config with {opt.mlf_args}")
+        config["model"]["params"]["attention_regularization"] = opt.mlf_args.get("attention_regularization")
+        config["model"]["params"]["cond_stage_key"] = opt.mlf_args.get("cond_stage_key")
+        config["model"]["params"]["cond_stage_config"]["params"]["multi_label_finetuning"] = opt.mlf_args.get("multi_label_finetuning")
 
     config["model"]["base_learning_rate"] = opt.learning_rate
     config["model"]["params"]["optimizer_type"] = opt.optimizer_type
@@ -205,6 +205,15 @@ def main(opt):
         num_val_workers=0,
     )
 
+    if hasattr(opt, "mlf_args") and opt.mlf_args.get("multi_label_finetuning", False):
+        tokenizer = OpenClipDummyTokenizer(opt.seed, opt.mlf_args.get("append_invariance_tokens", False), opt.mlf_args.get("single_healthy_class_token", False))
+        if opt.seed == 4200:
+            tokenization = tokenizer("Consolidation|Cardiomegaly|Pleural Effusion".split("|"))
+            if len(tokenization) != 9:
+                tokenization = tokenization[1:-1]
+            assert tokenization[1] == 15598 and tokenization[3] == 22073
+        model.cond_stage_model.set_multi_label_tokenizer(tokenizer)
+
     logger.info(f"Length of train dataset: {len(train_dataset)}")
     trainer.fit(model, dataset)
 
@@ -215,7 +224,7 @@ class DataModuleFromConfig(pl.LightningDataModule):
                  shuffle_val_dataloader=False, num_val_workers=None):
         super().__init__()
         self.batch_size = batch_size
-        self.num_workers = 0 #num_workers if num_workers is not None else batch_size * 2
+        self.num_workers = 0  # num_workers if num_workers is not None else batch_size * 2
         self.datasets = {}
         if num_val_workers is None:
             self.num_val_workers = self.num_workers

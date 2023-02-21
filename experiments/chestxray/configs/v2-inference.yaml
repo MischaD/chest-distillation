@@ -66,6 +66,4 @@ model:
       target: src.ldm.encoders.modules.FrozenOpenCLIPEmbedder
       params:
         layer: "penultimate"
-        one_hot_encoded: False
-        append_invariance_tokens: False
-        single_healthy_class_token: False
+        multi_label_finetuning: False

@@ -79,10 +79,10 @@ ddim_steps=50
 plms=False
 
 #ohe arguments
-ohe_args = dict(
-    one_hot_encoded=False,
-    cond_stage_key="impression",
-    append_invariance_tokens=False,
-    single_healthy_class_token=False,
+mlf_args = dict(
+    multi_label_finetuning=True,
+    cond_stage_key="finding_labels",
+    append_invariance_tokens=True,
+    single_healthy_class_token=True,
     attention_regularization=0.0,
 )

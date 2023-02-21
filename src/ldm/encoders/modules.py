@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.utils.checkpoint import checkpoint
+import numpy as np
 
 from transformers import T5Tokenizer, T5EncoderModel, CLIPTokenizer, CLIPTextModel
 from log import logger
@@ -140,7 +141,7 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
         "last",
         "penultimate"
     ]
-    def __init__(self, arch="ViT-H-14", version="laion2b_s32b_b79k", device="cuda", max_length=77, layer="last", one_hot_encoded=False, append_invariance_tokens=False, single_healthy_class_token=False):
+    def __init__(self, arch="ViT-H-14", version="laion2b_s32b_b79k", device="cuda", max_length=77, layer="last", multi_label_finetuning=False):
         super().__init__()
         assert layer in self.LAYERS
         model, _, _ = open_clip.create_model_and_transforms(arch, device=torch.device('cpu'), pretrained=version, cache_dir="./clip/")
@@ -157,14 +158,12 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
         else:
             raise NotImplementedError()
 
-        self.one_hot_encoded = one_hot_encoded
-        self.append_invariance_tokens = append_invariance_tokens
-        self.single_healthy_class_token = single_healthy_class_token
-        self.ohe_mapping = {}
+        self.multi_label_finetuning = multi_label_finetuning
+        self.multi_label_tokenizer = None
+        self.attn_mask = torch.fill(torch.zeros(max_length, max_length), -1 * torch.inf).fill_diagonal_(0).to("cuda")
 
-    def set_ohe_mapping(self, mapping):
-        logger.info(f"Setting Ohe Mapping to {mapping}")
-        self.ohe_mapping = mapping
+    def set_multi_label_tokenizer(self, multi_label_tokenizer):
+        self.multi_label_tokenizer = multi_label_tokenizer
 
     def freeze(self):
         self.model = self.model.eval()
@@ -182,18 +181,27 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
         return lens
 
     def forward(self, text):
-        if not self.one_hot_encoded:
+        if not self.multi_label_finetuning:
             tokens = open_clip.tokenize(text)
         else:
-            tokens = self.ohe_mapping[text]
+            for i, text_ in enumerate(text):
+                if isinstance(text_, float):
+                    # happens with nan --> indecisive samples == "No Finding"
+                    text[i] = "No Finding"
+            tokens = torch.stack([self.multi_label_tokenizer(text_.split("|")) for text_ in text])
         z = self.encode_with_transformer(tokens.to(self.device))
         return z
 
     def encode_with_transformer(self, text):
         x = self.model.token_embedding(text)  # [batch_size, n_ctx, d_model]
-        x = x + self.model.positional_embedding
-        x = x.permute(1, 0, 2)  # NLD -> LND
-        x = self.text_transformer_forward(x, attn_mask=self.model.attn_mask)
+        if not self.multi_label_finetuning:
+            x = x + self.model.positional_embedding
+            x = x.permute(1, 0, 2)  # NLD -> LND
+            x = self.text_transformer_forward(x, attn_mask=self.model.attn_mask[:])
+        else:
+            x = x.permute(1, 0, 2)  # NLD -> LND
+            x = self.text_transformer_forward(x, attn_mask=self.attn_mask[:x.size()[0], :x.size()[0]])
+
         x = x.permute(1, 0, 2)  # LND -> NLD
         x = self.model.ln_final(x)
         return x
@@ -211,3 +219,75 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
     def encode(self, text):
         return self(text)
 
+
+class OpenClipDummyTokenizer:
+    N_TOKENS = 49408
+    SOS_TOKEN = 49406
+    EOS_TOKEN = 49407
+    MAPPING = [
+        {"No Finding": 1},
+        {"Atelectasis": 2},
+        {"Cardiomegaly": 3},
+        {"Consolidation": 4},
+        {"Edema": 5},
+        {"Lung Opacity": 6},
+        {"Pleural Effusion": 7},
+        {"Pneumonia": 8},
+        {"Pneumothorax": 9},
+    ]
+
+    MAPPINGv14 = [
+        {"No Finding": 1},
+        {"Atelectasis": 2},
+        {"Cardiomegaly": 3},
+        {"Consolidation": 4},
+        {"Edema": 5},
+        {"Lung Opacity": 6},
+        {"Pleural Effusion": 7},
+        {"Pneumonia": 8},
+        {"Pneumothorax": 9},
+        {"Enlarged Cardiomediastinum": 10},
+        {"Fracture": 11},
+        {"Lung Lesion": 12},
+        {"Pleural Other": 13},
+        {"Support Devices": 14},
+    ]
+
+    def __init__(self, seed, append_invariance_tokens, single_healthy_class_token):
+        r = np.random.RandomState(seed)
+        mapping_to_token = np.arange(1, self.N_TOKENS - 2)
+        r.shuffle(mapping_to_token)
+        self.mapping_to_token = mapping_to_token
+        self.append_invariance_tokens = append_invariance_tokens
+        self.single_healthy_class_token = single_healthy_class_token
+
+    def __call__(self, label_list):
+        tokens = []
+        for i in range(len(self.MAPPING)):
+            for k, v in self.MAPPING[i].items():
+                if k in label_list:
+                    tokens.append(v)
+                else:
+                    if self.single_healthy_class_token and k not in ["Support Devices", "No Finding"]:
+                        tokens.append(0)
+                    else:
+                        tokens.append(v + len(self.MAPPING))
+
+        tokens = [self.mapping_to_token[token-1] for token in tokens]
+
+        if self.append_invariance_tokens:
+            tokens = [self.SOS_TOKEN,] + tokens + [self.EOS_TOKEN,]
+        return torch.tensor(tokens)
+
+    #def populate_tokens(self, dataset, cond_key):
+        #words = set()
+        #for x in dataset:
+        #    cond = x[cond_key]
+        #    if isinstance(cond, float):
+        #        # nan - missing label
+        #        continue
+        #    for c in cond.split("|"):
+        #        words.add(c)
+
+        #ordered_words = list(words)
+        #sorted(ordered_words)
