@@ -38,6 +38,9 @@ def get_sample_model_args():
     parser.add_argument("--ckpt", type=str, default="train")
     parser.add_argument("--img_dir", type=str, default=None, help="dir to save images in. Default will be inside log dir and should be used!")
     parser.add_argument("--use_mscxrlabels", action="store_true", default=False, help="")
+    parser.add_argument("--N", type=int, default=None, help="")
+    parser.add_argument("--label_list_path", type=str, default=None, help="")
+
     return parser.parse_args()
 
 def get_comput_fid_args():

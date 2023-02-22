@@ -3,6 +3,7 @@ import random
 from log import logger, log_experiment
 import os
 import logging
+import pandas as pd
 import torch
 from utils import get_sample_model_args, make_exp_config, load_model_from_config, collate_batch, img_to_viz
 from log import formatter as log_formatter
@@ -20,7 +21,7 @@ import time
 import random
 import numpy as np
 from einops import rearrange
-from src.datasets.sample_dataset import get_mscxr_synth_dataset
+from src.datasets.sample_dataset import get_mscxr_synth_dataset, get_mscxr_synth_dataset_size_n
 
 
 
@@ -37,16 +38,32 @@ def main(opt):
 
     device = torch.device("cuda")
     model = model.to(device)
+    seed_everything(opt.seed)
 
-    if opt.use_mscxrlabels:
-        dataset = get_dataset(opt, "test")
-        dataset.load_precomputed(model)
-        synth_dataset, labels = get_mscxr_synth_dataset(opt, dataset)
+    if hasattr(opt, "label_list_path"):
+        df = pd.read_csv(opt.label_list_path)
+        synth_dataset = [{k: v} for k, v in zip(list(df["Finding Labels"]), list(df["impression"]))]
+        labels = set(df["Finding Labels"].unique())
+        if hasattr(opt, "N") and opt.N is not None:
+            synth_dataset = synth_dataset[:opt.N]
     else:
-        dataset = get_dataset(opt, "testp19")
-        dataset.load_precomputed(model)
-        synth_dataset, labels = get_mscxr_synth_dataset(opt, dataset, finding_key="impression", label_key="finding_labels")
-
+        if opt.use_mscxrlabels:
+            dataset = get_dataset(opt, "test")
+            dataset.load_precomputed(model)
+            if hasattr(opt, "N") and opt.N is not None:
+                logger.info(f"Sampling {opt.N} from dataset mscxr")
+                synth_dataset, labels = get_mscxr_synth_dataset_size_n(opt.N, dataset)
+            else:
+                synth_dataset, labels = get_mscxr_synth_dataset(opt, dataset)
+        else:
+            dataset = get_dataset(opt, "testp19")
+            dataset.load_precomputed(model)
+            if hasattr(opt, "N") and opt.N is not None:
+                logger.info(f"Sampling {opt.N} from dataset p19")
+                synth_dataset, labels = get_mscxr_synth_dataset_size_n(opt.N, dataset, finding_key="impression",
+                                                                       label_key="finding_labels")
+            else:
+                synth_dataset, labels = get_mscxr_synth_dataset(opt, dataset, finding_key="impression", label_key="finding_labels")
 
     os.makedirs(img_dir, exist_ok=True)
     for label in labels:
@@ -94,8 +111,9 @@ def main(opt):
                         sample_path = os.path.join(os.path.join(img_dir, classes[i]))
                         base_count = len(os.listdir(sample_path))
                         sample = 255. * rearrange(output[i].numpy(), 'c h w -> h w c')
-                        Image.fromarray(sample.astype(np.uint8)).save(
-                            os.path.join(sample_path, f"{base_count:05}.png"))
+                        img_path = os.path.join(sample_path, f"{base_count:05}.png")
+                        logger.info(f"Saving sample to {img_path}")
+                        Image.fromarray(sample.astype(np.uint8)).save(img_path)
 
 
 if __name__ == '__main__':
