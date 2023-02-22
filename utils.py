@@ -51,6 +51,7 @@ def get_comput_fid_args():
     parser.add_argument('--num-workers', type=int,
                         help=('Number of processes to use for data loading. '
                               'Defaults to `min(8, num_cpus)`'))
+    parser.add_argument("--result_dir", type=str, default=None, help="dir to save results in.")
     return parser.parse_args()
 
 def get_train_args():

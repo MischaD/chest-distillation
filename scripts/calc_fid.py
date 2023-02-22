@@ -1,6 +1,7 @@
 import os
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 import torch
+import json
 from src.evaluation.inception import InceptionV3
 from src.evaluation.xrv_fid import calculate_fid_given_paths
 from utils import get_comput_fid_args
@@ -52,11 +53,17 @@ def main(opt):
                                               dims=dims,
                                               num_workers=num_workers)
         logger.info(f"FID of the following paths: {opt.path_src} -- {opt.path_tgt}")
-        logger.info(f'{fid_model} FID: {fid_value} --> ${fid_value:2.01f}$', fid_value)
+        logger.info(f'{fid_model} FID: {fid_value} --> ${fid_value:.1f}$')
         results[fid_model] = fid_value
 
-    for fid_model, fid_value in results.items():
-        print(f'{fid_model} FID: {fid_value} --> ${fid_value:2.01f}$', fid_value)
+    if hasattr(opt, "result_dir") and opt.result_dir is not None:
+        with open(os.path.join(opt.result_dir, "fid_results.json"), "w") as file:
+            results_file = {}
+            for fid_model, fid_value in results.items():
+                results_file[fid_model] = {"FID": fid_value,
+                                          "as_string": f"{fid_value:.1f}"
+                                          }
+            json.dump(results_file, file)
 
 
 if __name__ == '__main__':
