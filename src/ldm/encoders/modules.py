@@ -160,7 +160,7 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
 
         self.multi_label_finetuning = multi_label_finetuning
         self.multi_label_tokenizer = None
-        self.attn_mask = torch.fill(torch.zeros(max_length, max_length), -1 * torch.inf).fill_diagonal_(0).to("cuda")
+        self.attn_mask = torch.fill(torch.zeros(max_length, max_length), -1 * torch.inf).fill_diagonal_(0)
 
     def set_multi_label_tokenizer(self, multi_label_tokenizer):
         self.multi_label_tokenizer = multi_label_tokenizer
@@ -200,7 +200,7 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
             x = self.text_transformer_forward(x, attn_mask=self.model.attn_mask[:])
         else:
             x = x.permute(1, 0, 2)  # NLD -> LND
-            x = self.text_transformer_forward(x, attn_mask=self.attn_mask[:x.size()[0], :x.size()[0]])
+            x = self.text_transformer_forward(x, attn_mask=self.attn_mask[:x.size()[0], :x.size()[0]].to(self.device))
 
         x = x.permute(1, 0, 2)  # LND -> NLD
         x = self.model.ln_final(x)

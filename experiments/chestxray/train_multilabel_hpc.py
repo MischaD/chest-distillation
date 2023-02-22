@@ -3,8 +3,7 @@ import os
 from src.preliminary_masks import AttentionExtractor
 
 debug = True
-
-root = "/vol/ideadata/ed52egek"
+root = "/home/atuin/b143dc/b143dc11"
 data_dir = os.path.join(root, "data/mimic/jpg/physionet.org/files/mimic-cxr-jpg/2.0.0/") # data
 work_dir = os.path.join(root, "pycharm/chest-distillation") # code, config
 ckpt = os.path.join(root, "diffusionmodels/latentdiffusion/512-base-ema.ckpt")
@@ -19,14 +18,14 @@ dataset_args_train = dict(
     split=DatasetSplit("train"),
     #all 8b308d1ff146fc994156bb7f50775f99891bdd33
     #limit_dataset=[0, 10],#c0a08655ac43528158bef787cbfa549c447665dfb
-    limit_dataset=[0, 100],
+    #limit_dataset=[0, 100],
     preload=True,
 )
 dataset_args_val = dict(
     dataset="chestxraymimicbbox",
     base_dir=data_dir,
     split=DatasetSplit("mscxr"),
-    limit_dataset=[0, 64], #213851912adf554689226fff69183d41d96f6d44
+    #limit_dataset=[0, 64], #213851912adf554689226fff69183d41d96f6d44
     #limit_dataset=[0, 10], #c0a08655ac43528158bef787cbfa549c447665df
     preload=True,
 )
@@ -64,7 +63,7 @@ optimizer_type="adam" # adam or lion
 learning_rate=5e-5
 
 # dataloading
-batch_size=4
+batch_size=16
 num_workers=1
 
 #trainer

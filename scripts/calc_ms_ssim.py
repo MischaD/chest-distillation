@@ -118,7 +118,7 @@ def main(opt):
                             break
 
     if len(os.listdir(img_dir)) < opt.n_sample_sets:
-        logger.warning(f"Found fewer samples than specified. Fallback to using fewer samples. Given: {os.listdir('img_dir')}, Needed: {opt.n_sample_sets}")
+        logger.warning(f"Found fewer samples than specified. Fallback to using fewer samples. Given: {os.listdir(img_dir)}, Needed: {opt.n_sample_sets}")
 
     mean, sd = calc_ms_ssim_for_path_ordered(img_dir, trial_size=opt.trial_size)
     with open(os.path.join(img_dir, "ms_ssim_results.json"), "w") as file:

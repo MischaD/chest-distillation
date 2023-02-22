@@ -131,15 +131,16 @@ class FOBADataset(Dataset):
         entry["preliminary_mask"] = torch.load(os.path.join(self._preliminary_masks_path, entry["rel_path"] + ".pt"))
         return entry
 
-    def add_preliminary_masks(self, base_path=None):
+    def add_preliminary_masks(self, base_path=None, sanity_check=True):
         if base_path is not None:
             self._preliminary_masks_path = base_path
         else:
             self._preliminary_masks_path = self.opt.out_dir
         # sanity check
-        for i in [0, len(self.data) - 1]:
-            attention_mask_file = os.path.join(self._preliminary_masks_path, self.data[i]["rel_path"] + ".pt")
-            assert os.path.isfile(attention_mask_file), f"File not Found: {attention_mask_file}"
+        if sanity_check:
+            for i in [0, len(self.data) - 1]:
+                attention_mask_file = os.path.join(self._preliminary_masks_path, self.data[i]["rel_path"] + ".pt")
+                assert os.path.isfile(attention_mask_file), f"File not Found: {attention_mask_file}"
         logger.info("Sanity check complete! All attention masks computed.")
 
     def add_inpaintings(self, exp_name):

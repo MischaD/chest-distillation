@@ -47,6 +47,7 @@ dataset_args_test = dict(
     save_original_images=True,
 )
 
+
 # dataset
 C=4 # latent channels
 H=512

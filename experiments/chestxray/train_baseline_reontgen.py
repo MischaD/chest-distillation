@@ -42,7 +42,7 @@ dataset_args_test = dict(
     base_dir=data_dir,
     split=DatasetSplit("mscxr"),
     #0-1133 10d6f749d36ca86d83cdd19bca06a7e9d52a08b5
-    limit_dataset=[0, 12],
+    limit_dataset=[0, 100],
     preload=True,
     save_original_images=True,
 )

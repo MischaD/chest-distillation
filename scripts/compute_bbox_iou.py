@@ -128,6 +128,10 @@ def main(opt):
     dataset.load_precomputed(model)
 
     seed_everything(opt.seed)
+    if opt.batch_size > 8:
+        logger.info("Adjusting batch size to 8 - will go oom otherwise")
+        opt.batch_size = 8
+
     start_code = torch.randn([opt.batch_size, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
 
     precision_scope = autocast
@@ -146,6 +150,7 @@ def main(opt):
                             shuffle=False,
                             num_workers=0,#opt.num_workers,
                             collate_fn=collate_batch,
+                            drop_last=False,
                             )
 
 
@@ -163,7 +168,7 @@ def main(opt):
                         logger.info(f"Masks already exists for {samples['rel_path']}")
                         continue
                     #img = model.log_images(samples, cond_key="label_text", unconditional_guidance_scale=1.0, inpaint=False)
-                    images = model.log_images(samples, split="test", sample=False, inpaint=True,
+                    images = model.log_images(samples, N=opt.batch_size, split="test", sample=False, inpaint=True,
                                                   plot_progressive_rows=False, plot_diffusion_rows=False,
                                                   use_ema_scope=False, cond_key="label_text", mask=1.,
                                                   save_attention=True)
@@ -199,7 +204,7 @@ def main(opt):
     resize_to_imag_size = torchvision.transforms.Resize(512)
     resize_to_latent_size = torchvision.transforms.Resize(64)
 
-    dataset.add_preliminary_masks(mask_dir)
+    dataset.add_preliminary_masks(mask_dir, sanity_check=False)
     mask_suggestor = GMMMaskSuggestor(opt)
     log_some = 1e5
     results = {"rel_path":[], "finding_labels":[], "iou":[], "miou":[], "bboxiou":[], "bboxmiou":[], "distance":[], "top1":[], "aucroc": [], "cnr":[]}
@@ -301,14 +306,14 @@ def main(opt):
                 log_some -= 1
 
     df = pd.DataFrame(results)
-    logger.info(f"Saving file with results to {opt.log_dir}")
-    df.to_csv(os.path.join(opt.log_dir, "bbox_results.csv"))
+    logger.info(f"Saving file with results to { opt.mask_dir}")
+    df.to_csv(os.path.join( opt.mask_dir, "bbox_results.csv"))
     mean_results = df.groupby("finding_labels").mean(numeric_only=True)
-    mean_results.to_csv(os.path.join(opt.log_dir, "bbox_results_means.csv"))
+    mean_results.to_csv(os.path.join(opt.mask_dir, "bbox_results_means.csv"))
     logger.info(df.mean())
     logger.info(df.groupby("finding_labels").mean(numeric_only=True))
 
-    with open(os.path.join(opt.log_dir, "bbox_results.json"), "w") as file:
+    with open(os.path.join(opt.mask_dir, "bbox_results.json"), "w") as file:
         json_results = {}
         json_results["all"] = dict(df.mean(numeric_only=True))
         for x in mean_results.index:
