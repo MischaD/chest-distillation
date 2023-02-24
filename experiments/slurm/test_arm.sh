@@ -15,9 +15,9 @@ source activate chest
 
 cd $WORK/pycharm/chest-distillation
 
-EXPERIMENT_NAME='finetune-sd-128-ucg'
-LOG_DIR_TIMESTAMP='2023-02-23T12-53-12'
-CHECKPOINT_FILENAME='global_step=10000.ckpt' # rest determined automatically for your own safety
+EXPERIMENT_NAME='mlf-invariancefalse-singlehealthyfalse'
+LOG_DIR_TIMESTAMP='2023-02-21T23-45-15'
+CHECKPOINT_FILENAME='global_step=50000.ckpt' # rest determined automatically for your own safety
 EXPERIMENT_FILE_PATH='experiments/chestxray/train_baseline_reontgen_hpc.py'
 # TODO DOUBLE CHECK If this is a baseline run - if so --> do not use mscxr-labels
 
@@ -31,16 +31,7 @@ CHECKPOINT_PATH=$LOG_DIR/checkpoints/$CHECKPOINT_FILENAME
 #discriminative
 python scripts/compute_bbox_iou.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --ckpt=$CHECKPOINT_PATH --mask_dir=$LOG_DIR/preliminary_masks
 
-#genrative
-#python scripts/sample_model.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --ckpt=$CHECKPOINT_PATH --img_dir=$LOG_DIR/generatedmscxr --use-mscxr-labels
-#python scripts/sample_model.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --ckpt=$CHECKPOINT_PATH --img_dir=$LOG_DIR/generated --N=5000 --label_list_path=$FID_REFERENCE_DATASET
 python scripts/sample_model.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --ckpt=$CHECKPOINT_PATH --img_dir=$LOG_DIR/generatedevenly --N=5000 --label_list_path=$FID_REFERENCE_DATASET_EVENLY
-
-#python scripts/calc_fid.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME $LOG_DIR/generatedmccxr $FID_REFERENCE_DATASET --result_dir=$LOG_DIR/generatedmccxr
-#python scripts/calc_fid.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME $LOG_DIR/generated $FID_REFERENCE_DATASET --result_dir=$LOG_DIR/generated
 python scripts/calc_fid.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME $LOG_DIR/generatedevenly $FID_REFERENCE_DATASET_EVENLY --result_dir=$LOG_DIR/generatedevenly
-
 python scripts/calc_ms_ssim.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --ckpt=$CHECKPOINT_PATH --n_sample_sets=100 --trial_size=4 --img_dir=$LOG_DIR/ms_ssim_mscxr
-#python scripts/calc_ms_ssim.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --ckpt=$CHECKPOINT_PATH --n_sample_sets=100 --trial_size=4 --img_dir=$LOG_DIR/ms_ssim
-
 python scripts/classify_chest_xray.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME $FID_REFERENCE_DATASET_EVENLY

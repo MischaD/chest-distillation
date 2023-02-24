@@ -62,6 +62,7 @@ scale = 4
 cond_stage_trainable=True
 optimizer_type="adam" # adam or lion
 learning_rate=5e-5
+ucg_probability=0.3
 
 # dataloading
 batch_size=4

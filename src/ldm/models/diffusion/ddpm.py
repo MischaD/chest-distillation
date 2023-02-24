@@ -81,6 +81,7 @@ class DDPM(pl.LightningModule):
                  reset_num_ema_updates=False,
                  optimizer_type="adam",
                  attention_regularization=0.0,
+                 ucg_probability = 0.0,
                  ):
         super().__init__()
         assert parameterization in ["eps", "x0", "v"], 'currently only supporting "eps" and "x0" and "v"'
@@ -136,6 +137,7 @@ class DDPM(pl.LightningModule):
 
         self.attention_regularization = attention_regularization
 
+        self.ucg_probability = ucg_probability
         self.ucg_training = ucg_training or dict()
         if self.ucg_training:
             self.ucg_prng = np.random.RandomState()
@@ -447,6 +449,12 @@ class DDPM(pl.LightningModule):
             for i in range(len(batch[k])):
                 if self.ucg_prng.choice(2, p=[1 - p, p]):
                     batch[k][i] = val
+
+
+        for i, s in enumerate(batch["finding_labels"]):
+            if s == "No Finding":
+                if bool(torch.rand(1) < self.ucg_probability):
+                    batch[self.cond_stage_key][i] = ""
 
         loss, loss_dict = self.shared_step(batch, cond_key=self.cond_stage_key)
 

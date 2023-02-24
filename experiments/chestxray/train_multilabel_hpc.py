@@ -3,6 +3,7 @@ import os
 from src.preliminary_masks import AttentionExtractor
 
 debug = True
+
 root = "/home/atuin/b143dc/b143dc11"
 data_dir = os.path.join(root, "data/mimic/jpg/physionet.org/files/mimic-cxr-jpg/2.0.0/") # data
 work_dir = os.path.join(root, "pycharm/chest-distillation") # code, config
@@ -25,8 +26,7 @@ dataset_args_val = dict(
     dataset="chestxraymimicbbox",
     base_dir=data_dir,
     split=DatasetSplit("mscxr"),
-    #limit_dataset=[0, 64], #213851912adf554689226fff69183d41d96f6d44
-    #limit_dataset=[0, 10], #c0a08655ac43528158bef787cbfa549c447665df
+    limit_dataset=[0, 64],  # 6d79a86d53fe64e8ea8dca6e81be75b0edfd98c4
     preload=True,
 )
 dataset_args_testp19 = dict(
@@ -35,6 +35,7 @@ dataset_args_testp19 = dict(
     split=DatasetSplit("p19"),
     preload=True,
 )
+
 
 dataset_args_test = dict(
     dataset="chestxraymimicbbox",
@@ -61,6 +62,7 @@ scale = 4
 cond_stage_trainable=True
 optimizer_type="adam" # adam or lion
 learning_rate=5e-5
+ucg_probability=0.0
 
 # dataloading
 batch_size=16
@@ -74,8 +76,8 @@ precompute_latent_training_data=True
 
 #sample
 n_synth_samples_per_class=625
-ddim_steps=50
-plms=False
+ddim_steps=75
+plms=True
 
 #ohe arguments
 mlf_args = dict(

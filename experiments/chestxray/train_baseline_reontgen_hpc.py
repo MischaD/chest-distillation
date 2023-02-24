@@ -19,7 +19,7 @@ dataset_args_train = dict(
     split=DatasetSplit("train"),
     #all 8b308d1ff146fc994156bb7f50775f99891bdd33
     #limit_dataset=[0, 10],#c0a08655ac43528158bef787cbfa549c447665dfb
-    limit_dataset=[0, 100],
+    #limit_dataset=[0, 100],
     preload=True,
 )
 dataset_args_val = dict(
@@ -61,6 +61,7 @@ scale = 4
 cond_stage_trainable=True
 optimizer_type="adam" # adam or lion
 learning_rate=5e-5
+ucg_probability=0.0
 
 # dataloading
 batch_size=16
@@ -74,5 +75,5 @@ precompute_latent_training_data=True
 
 #sample
 n_synth_samples_per_class=625
-ddim_steps=50
-plms=False
+ddim_steps=75
+plms=True

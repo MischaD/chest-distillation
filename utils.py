@@ -31,6 +31,14 @@ def get_compute_mssim():
                         help="dir to save images in. Default will be inside log dir and should be used!")
     return parser.parse_args()
 
+def get_classification_args():
+    parser = argparse.ArgumentParser(description="Classify Generated Samples")
+    parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
+    parser.add_argument("EXP_NAME", type=str, help="Path to Experiment results")
+    parser.add_argument("IMG_PATH", type=str, default=None,
+                        help="Either path to directory containing images with the folder names being the label, or path to csv")
+    return parser.parse_args()
+
 def get_sample_model_args():
     parser = argparse.ArgumentParser(description="Compute Masks")
     parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
