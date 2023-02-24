@@ -128,6 +128,10 @@ def main(opt):
         config["model"]["params"]["cond_stage_key"] = opt.mlf_args.get("cond_stage_key")
         config["model"]["params"]["cond_stage_config"]["params"]["multi_label_finetuning"] = opt.mlf_args.get("multi_label_finetuning")
 
+    if hasattr(opt, "ucg_probability"):
+        config["model"]["params"]["ucg_probability"] = opt.mlf_args.get("ucg_probability")
+
+
     config["model"]["base_learning_rate"] = opt.learning_rate
     config["model"]["params"]["optimizer_type"] = opt.optimizer_type
     logger.info(f"Setting learning rate to {opt.learning_rate} and optimizer to {opt.optimizer_type}")
