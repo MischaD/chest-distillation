@@ -138,6 +138,7 @@ class DDPM(pl.LightningModule):
         self.attention_regularization = attention_regularization
 
         self.ucg_probability = ucg_probability
+        logger.info(f"Unconditional guidance probability: {self.ucg_probability}")
         self.ucg_training = ucg_training or dict()
         if self.ucg_training:
             self.ucg_prng = np.random.RandomState()

@@ -1,6 +1,6 @@
 #!/bin/bash -l
 #SBATCH --time=24:00:00
-#SBATCH --job-name=Baseline-Learnable-Train-bs256
+#SBATCH --job-name=Baseline-NotLearnable-Train-bs256
 #SBATCH --ntasks-per-node=8
 #SBATCH --nodes=2
 #SBATCH --partition=a100
@@ -21,4 +21,4 @@ moduel load cuda
 
 source activate chest
 
-srun python scripts/train_baseline.py experiments/chestxray/train_baseline_reontgen_hpc_multinode.py baseline-bs256-learnable
+srun python scripts/train_baseline.py experiments/chestxray/train_baseline_reontgen_hpc_multinode_not_learnable.py baseline-bs256-not-learnable

@@ -19,7 +19,7 @@ dataset_args_train = dict(
     split=DatasetSplit("train"),
     #all 8b308d1ff146fc994156bb7f50775f99891bdd33
     #limit_dataset=[0, 10],#c0a08655ac43528158bef787cbfa549c447665dfb
-    limit_dataset=[0, 100],
+    #limit_dataset=[0, 100],
     preload=True,
 )
 dataset_args_val = dict(
@@ -42,7 +42,7 @@ dataset_args_test = dict(
     base_dir=data_dir,
     split=DatasetSplit("mscxr"),
     #0-1133 10d6f749d36ca86d83cdd19bca06a7e9d52a08b5
-    #limit_dataset=[0, 100],
+    #limit_dataset=[0, 12],
     preload=True,
     save_original_images=True,
 )
@@ -60,7 +60,7 @@ scale = 4
 cond_stage_trainable=True
 optimizer_type="adam" # adam or lion
 learning_rate=5e-5
-ucg_probability=0.0
+ucg_probability=0.3
 
 # dataloading
 batch_size=4

@@ -129,7 +129,8 @@ def main(opt):
         config["model"]["params"]["cond_stage_config"]["params"]["multi_label_finetuning"] = opt.mlf_args.get("multi_label_finetuning")
 
     if hasattr(opt, "ucg_probability"):
-        config["model"]["params"]["ucg_probability"] = opt.mlf_args.get("ucg_probability")
+        logger.info(f"Overwriting default arguments of ucg probability with {opt.ucg_probability}")
+        config["model"]["params"]["ucg_probability"] = opt.ucg_probability
 
 
     config["model"]["base_learning_rate"] = opt.learning_rate
