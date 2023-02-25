@@ -1,14 +1,14 @@
 #!/bin/bash -l
 #SBATCH --time=24:00:00
-#SBATCH --job-name=Train
+#SBATCH --job-name=TrainITrueHFalse
 #SBATCH --ntasks-per-node=4
 #SBATCH --gres=gpu:a100:4
 #SBATCH --partition=a100
 #SBATCH -C a100_80
 #SBATCH --export=NONE
 
-EXPERIMENT_NAME=mlf-invariancefalse-singlehealthyfalse
-EXPERIMENT_FILE_PATH=experiments/chestxray/train_multilabel_hpc.py
+EXPERIMENT_NAME=mlf-invariancetrue-singlehealthyfalse
+EXPERIMENT_FILE_PATH=experiments/chestxray/train_multilabel_hpc_tf.py
 
 cd $WORK/pycharm/chest-distillation
 
