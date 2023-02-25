@@ -46,6 +46,7 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 import matplotlib.patches as patches
 from src.datasets.utils import path_to_tensor
+from src.ldm.encoders.modules import OpenClipDummyTokenizer
 
 
 def get_latent_slice(batch, opt):
@@ -119,9 +120,20 @@ def main(opt):
     config["model"]["params"]["unet_config"]["params"]["attention_save_mode"] = "cross"
     logger.info(f"Enabling attention save mode")
 
+    is_mlf = False
+    if hasattr(opt, "mlf_args"):
+        is_mlf = opt.mlf_args.get("multi_label_finetuning", False)
+        logger.info(f"Overwriting default arguments of config with {opt.mlf_args}")
+        config["model"]["params"]["attention_regularization"] = opt.mlf_args.get("attention_regularization")
+        config["model"]["params"]["cond_stage_key"] = opt.mlf_args.get("cond_stage_key")
+        config["model"]["params"]["cond_stage_config"]["params"]["multi_label_finetuning"] = opt.mlf_args.get("multi_label_finetuning")
+
+
     model = load_model_from_config(config, f"{opt.ckpt}")
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = model.to(device)
+    if opt.plms:
+        logger.info("Always using DDIM sampler due to empirically better results")
     sampler = DDIMSampler(model)
 
     dataset.apply_filter_for_disease_in_txt()
@@ -142,6 +154,16 @@ def main(opt):
 
     start_reverse_diffusion_from_t = int((rev_diff_steps - 1) * (sampler.ddpm_num_timesteps // opt.ddim_steps) + 1)
 
+    if is_mlf:
+        tokenizer = OpenClipDummyTokenizer(opt.seed, opt.mlf_args.get("append_invariance_tokens", False), opt.mlf_args.get("single_healthy_class_token", False))
+        if opt.seed == 4200:
+            tokenization = tokenizer("Consolidation|Cardiomegaly|Pleural Effusion".split("|"))
+            if len(tokenization) != 9:
+                tokenization = tokenization[1:-1]
+            assert tokenization[1] == 15598 and tokenization[3] == 22073
+        model.cond_stage_model.set_multi_label_tokenizer(tokenizer)
+
+    cond_key = "finding_labels" if "is_mlf" else "label_text"
     logger.info(f"Relative path to first sample: {dataset[0]['rel_path']}")
 
     print(start_reverse_diffusion_from_t)
@@ -170,30 +192,38 @@ def main(opt):
                     #img = model.log_images(samples, cond_key="label_text", unconditional_guidance_scale=1.0, inpaint=False)
                     images = model.log_images(samples, N=opt.batch_size, split="test", sample=False, inpaint=True,
                                                   plot_progressive_rows=False, plot_diffusion_rows=False,
-                                                  use_ema_scope=False, cond_key="label_text", mask=1.,
+                                                  use_ema_scope=False, cond_key=cond_key, mask=1.,
                                                   save_attention=True)
                     attention_maps = images.pop("attention")
                     attention_images = preprocess_attention_maps(attention_maps, on_cpu=False)
 
                     for j, attention in enumerate(attention_images):
-                        txt_label = samples["label_text"][j]
-                        # determine tokenization
-                        txt_label = txt_label.split("|")[0]  # we filter cases with different text labels, all are the same thanks for filtering
-                        token_lens = model.cond_stage_model.compute_word_len(txt_label.split(" "))
-                        token_positions = list(np.cumsum(token_lens) + 1)
-                        token_positions = [1,] + token_positions
-                        label = samples["finding_labels"][j]
-                        query_words = MIMIC_STRING_TO_ATTENTION[label]
-
-                        locations = word_to_slice(txt_label.split(" "), query_words)
-                        assert len(locations) >= 1, f"{samples['dicom_id'][j]}"
-
                         tok_attentions = []
-                        for location in locations:
-                            tok_attention = attention[-1*rev_diff_steps:,:,token_positions[location]:token_positions[location+1]]
-                            tok_attentions.append(tok_attention.mean(dim=(0,1,2)))
-                        preliminary_attention_mask = torch.stack(tok_attentions).mean(dim=(0))
 
+                        if is_mlf:
+                            token_positions = tokenizer.get_attention_map_location(samples["finding_labels"][j].split("|"))
+                            for token_position in token_positions:
+                                tok_attention = attention[-1 * rev_diff_steps:, :,
+                                                token_position:token_position+ 1]
+                                tok_attentions.append(tok_attention.mean(dim=(0, 1, 2)))
+
+                        else:
+                            txt_label = samples["label_text"][j]
+                            # determine tokenization
+                            txt_label = txt_label.split("|")[0]  # we filter cases with different text labels, all are the same thanks for filtering
+                            token_lens = model.cond_stage_model.compute_word_len(txt_label.split(" "))
+                            token_positions = list(np.cumsum(token_lens) + 1)
+                            token_positions = [1,] + token_positions
+                            label = samples["finding_labels"][j]
+                            query_words = MIMIC_STRING_TO_ATTENTION[label]
+
+                            locations = word_to_slice(txt_label.split(" "), query_words)
+                            assert len(locations) >= 1, f"{samples['dicom_id'][j]}"
+                            for location in locations:
+                                tok_attention = attention[-1*rev_diff_steps:,:,token_positions[location]:token_positions[location+1]]
+                                tok_attentions.append(tok_attention.mean(dim=(0,1,2)))
+
+                        preliminary_attention_mask = torch.stack(tok_attentions).mean(dim=(0))
                         path = os.path.join(mask_dir, samples["rel_path"][j])+ ".pt"
                         os.makedirs(os.path.dirname(path), exist_ok=True)
                         logger.info(f"Saving attention mask to {path}")
@@ -206,7 +236,7 @@ def main(opt):
 
     dataset.add_preliminary_masks(mask_dir, sanity_check=False)
     mask_suggestor = GMMMaskSuggestor(opt)
-    log_some = 1e5
+    log_some = 20
     results = {"rel_path":[], "finding_labels":[], "iou":[], "miou":[], "bboxiou":[], "bboxmiou":[], "distance":[], "top1":[], "aucroc": [], "cnr":[]}
 
     for samples in tqdm(dataloader, "computing metrics"):
@@ -306,14 +336,14 @@ def main(opt):
                 log_some -= 1
 
     df = pd.DataFrame(results)
-    logger.info(f"Saving file with results to { opt.mask_dir}")
-    df.to_csv(os.path.join( opt.mask_dir, "bbox_results.csv"))
+    logger.info(f"Saving file with results to { mask_dir}")
+    df.to_csv(os.path.join( mask_dir, "bbox_results.csv"))
     mean_results = df.groupby("finding_labels").mean(numeric_only=True)
-    mean_results.to_csv(os.path.join(opt.mask_dir, "bbox_results_means.csv"))
+    mean_results.to_csv(os.path.join(mask_dir, "bbox_results_means.csv"))
     logger.info(df.mean())
     logger.info(df.groupby("finding_labels").mean(numeric_only=True))
 
-    with open(os.path.join(opt.mask_dir, "bbox_results.json"), "w") as file:
+    with open(os.path.join(mask_dir, "bbox_results.json"), "w") as file:
         json_results = {}
         json_results["all"] = dict(df.mean(numeric_only=True))
         for x in mean_results.index:

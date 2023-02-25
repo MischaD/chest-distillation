@@ -17,8 +17,8 @@ cd $WORK/pycharm/chest-distillation
 
 EXPERIMENT_NAME='mlf-invariancefalse-singlehealthyfalse'
 LOG_DIR_TIMESTAMP='2023-02-21T23-45-15'
-CHECKPOINT_FILENAME='global_step=50000.ckpt' # rest determined automatically for your own safety
-EXPERIMENT_FILE_PATH='experiments/chestxray/train_baseline_reontgen_hpc.py'
+CHECKPOINT_FILENAME='global_step=30000.ckpt' # rest determined automatically for your own safety
+EXPERIMENT_FILE_PATH='experiments/chestxray/train_multilabel_hpc.py'
 # TODO DOUBLE CHECK If this is a baseline run - if so --> do not use mscxr-labels
 
 # ======================================================================================================================

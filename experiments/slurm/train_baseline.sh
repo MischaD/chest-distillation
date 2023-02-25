@@ -21,4 +21,4 @@ moduel load cuda
 
 source activate chest
 
-srun python scripts/train_baseline.py experiments/chestxray/train_baseline_reontgen_hpc_multinode.py baseline-bs256-learnable
+srun python scripts/train_baseline.py experiments/chestxray/train_baseline_reontgen_hpc_multinode.py baseline-bs256

@@ -262,6 +262,7 @@ class OpenClipDummyTokenizer:
         self.single_healthy_class_token = single_healthy_class_token
 
     def __call__(self, label_list):
+        "Doublecheck empty --> Should be the same as No Finding"
         tokens = []
         for i in range(len(self.MAPPING)):
             for k, v in self.MAPPING[i].items():
@@ -278,6 +279,18 @@ class OpenClipDummyTokenizer:
         if self.append_invariance_tokens:
             tokens = [self.SOS_TOKEN,] + tokens + [self.EOS_TOKEN,]
         return torch.tensor(tokens)
+
+    def get_attention_map_location(self, label_list):
+        locations = []
+        for label in label_list:
+            for i in range(len(self.MAPPING)):
+                k, v = [*self.MAPPING[i].items()][0]
+                if k == label:
+                    location = v
+            if not self.append_invariance_tokens:
+                location -= 1
+            locations.append(location)
+        return locations
 
     #def populate_tokens(self, dataset, cond_key):
         #words = set()
