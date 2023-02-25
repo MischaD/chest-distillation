@@ -185,7 +185,7 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
             tokens = open_clip.tokenize(text)
         else:
             for i, text_ in enumerate(text):
-                if isinstance(text_, float):
+                if isinstance(text_, float) or text_ == "":
                     # happens with nan --> indecisive samples == "No Finding"
                     text[i] = "No Finding"
             tokens = torch.stack([self.multi_label_tokenizer(text_.split("|")) for text_ in text])

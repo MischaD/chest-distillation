@@ -22,8 +22,7 @@ import random
 import numpy as np
 from einops import rearrange
 from src.datasets.sample_dataset import get_mscxr_synth_dataset, get_mscxr_synth_dataset_size_n
-
-
+from src.ldm.encoders.modules import OpenClipDummyTokenizer
 
 
 def main(opt):
@@ -34,6 +33,15 @@ def main(opt):
 
     logger.info(f"Saving Images to {img_dir}")
     config = OmegaConf.load(f"{opt.config_path_inference}")
+
+    is_mlf = False
+    if hasattr(opt, "mlf_args"):
+        is_mlf = opt.mlf_args.get("multi_label_finetuning", False)
+        logger.info(f"Overwriting default arguments of config with {opt.mlf_args}")
+        config["model"]["params"]["attention_regularization"] = opt.mlf_args.get("attention_regularization")
+        config["model"]["params"]["cond_stage_key"] = opt.mlf_args.get("cond_stage_key")
+        config["model"]["params"]["cond_stage_config"]["params"]["multi_label_finetuning"] = opt.mlf_args.get("multi_label_finetuning")
+
     model = load_model_from_config(config, f"{opt.ckpt}")
 
     device = torch.device("cuda")
@@ -65,6 +73,15 @@ def main(opt):
             else:
                 synth_dataset, labels = get_mscxr_synth_dataset(opt, dataset, finding_key="impression", label_key="finding_labels")
 
+    if is_mlf:
+        tokenizer = OpenClipDummyTokenizer(opt.seed, opt.mlf_args.get("append_invariance_tokens", False), opt.mlf_args.get("single_healthy_class_token", False))
+        if opt.seed == 4200:
+            tokenization = tokenizer("Consolidation|Cardiomegaly|Pleural Effusion".split("|"))
+            if len(tokenization) != 9:
+                tokenization = tokenization[1:-1]
+            assert tokenization[1] == 15598 and tokenization[3] == 22073
+        model.cond_stage_model.set_multi_label_tokenizer(tokenizer)
+
     os.makedirs(img_dir, exist_ok=True)
     for label in labels:
         os.makedirs(os.path.join(img_dir, label), exist_ok=True)
@@ -87,7 +104,11 @@ def main(opt):
                     uc = None
                     prompts = [list(x.values())[0] for x in samples]
                     classes = [list(x.keys())[0] for x in samples]
-                    c = model.get_learned_conditioning(prompts)
+                    if is_mlf:
+                        c = model.get_learned_conditioning(classes)
+                    else:
+                        c = model.get_learned_conditioning(prompts)
+
                     if opt.scale != 1.0:
                         uc = model.get_learned_conditioning(len(c) * [""])
 
