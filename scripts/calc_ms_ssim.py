@@ -23,6 +23,8 @@ import numpy as np
 from einops import rearrange
 from src.datasets.sample_dataset import get_mscxr_synth_dataset
 from src.evaluation.mssim import calc_ms_ssim_for_path_ordered, calc_ms_ssim_for_path
+from src.ldm.encoders.modules import OpenClipDummyTokenizer
+
 
 def main(opt):
     #mean, sd = calc_ms_ssim_for_path(opt.path, n=opt.n_samples, trials=opt.trials)
@@ -33,6 +35,14 @@ def main(opt):
 
     logger.info(f"Saving Images to {img_dir}")
     config = OmegaConf.load(f"{opt.config_path_inference}")
+
+    is_mlf = False
+    if hasattr(opt, "mlf_args"):
+        is_mlf = opt.mlf_args.get("multi_label_finetuning", False)
+        logger.info(f"Overwriting default arguments of config with {opt.mlf_args}")
+        config["model"]["params"]["attention_regularization"] = opt.mlf_args.get("attention_regularization")
+        config["model"]["params"]["cond_stage_key"] = opt.mlf_args.get("cond_stage_key")
+        config["model"]["params"]["cond_stage_config"]["params"]["multi_label_finetuning"] = opt.mlf_args.get("multi_label_finetuning")
 
     if not os.path.exists(img_dir):
         os.makedirs(img_dir, exist_ok=True)
@@ -59,6 +69,16 @@ def main(opt):
         else:
             sampler = DDIMSampler(model)
 
+        if is_mlf:
+            tokenizer = OpenClipDummyTokenizer(opt.seed, opt.mlf_args.get("append_invariance_tokens", False),
+                                               opt.mlf_args.get("single_healthy_class_token", False))
+            if opt.seed == 4200:
+                tokenization = tokenizer("Consolidation|Cardiomegaly|Pleural Effusion".split("|"))
+                if len(tokenization) != 9:
+                    tokenization = tokenization[1:-1]
+                # assert tokenization[1] == 15598 and tokenization[3] == 22073
+            model.cond_stage_model.set_multi_label_tokenizer(tokenizer)
+
         seed_everything(time.time())
 
         batched_dataset = [synth_dataset[i:i+batch_size] for i in range(0, len(synth_dataset), batch_size)]
@@ -76,8 +96,7 @@ def main(opt):
                         else:
                             prompt_list.add(prompt)
 
-                        prompts = prompts * actual_batch_size
-                        #classes = classes * actual_batch_size
+                        prompts = prompts * actual_batch_size if not is_mlf else classes * actual_batch_size
 
                         c = model.get_learned_conditioning(prompts)
                         uc = None
@@ -86,7 +105,7 @@ def main(opt):
 
                         start_code = torch.randn([actual_batch_size, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
                         shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
-                        output, _ = sampler.sample(S=opt.ddim_steps,
+                        output , _ = sampler.sample(S=opt.ddim_steps,
                                                     conditioning=c,
                                                     batch_size=len(prompts),
                                                     shape=shape,
@@ -112,6 +131,9 @@ def main(opt):
                         with open(os.path.join(dir_path, "prompt.txt"), 'w') as file:
                             # Write a string to the file
                             file.write("\n".join(prompts))
+                            if is_mlf:
+                                mlfclasses = "\n".join(classes)
+                                file.write(f"MLF- Input:\n {mlfclasses}")
 
                         logger.info(f"Computed trial set {base_count_dir+1} out of {opt.n_sample_sets} for prompt {prompt}")
                         if base_count_dir+1 == opt.n_sample_sets:
