@@ -1,6 +1,6 @@
 #!/bin/bash -l
 #SBATCH --time=24:00:00
-#SBATCH --job-name=TrainITrueHFalse
+#SBATCH --job-name=TrainTrueFalse
 #SBATCH --ntasks-per-node=4
 #SBATCH --gres=gpu:a100:4
 #SBATCH --partition=a100
@@ -17,7 +17,7 @@ export http_proxy=http://proxy.rrze.uni-erlangen.de:80
 export https_proxy=http://proxy.rrze.uni-erlangen.de:80
 
 module load python/3.9-anaconda
-moduel load cuda
+module load cuda
 
 source activate chest
 

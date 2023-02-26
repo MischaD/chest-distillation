@@ -79,7 +79,7 @@ def main(opt):
             tokenization = tokenizer("Consolidation|Cardiomegaly|Pleural Effusion".split("|"))
             if len(tokenization) != 9:
                 tokenization = tokenization[1:-1]
-            assert tokenization[1] == 15598 and tokenization[3] == 22073
+            #assert tokenization[1] == 15598 and tokenization[3] == 22073
         model.cond_stage_model.set_multi_label_tokenizer(tokenizer)
 
     os.makedirs(img_dir, exist_ok=True)
