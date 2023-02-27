@@ -278,18 +278,23 @@ class OpenClipDummyTokenizer:
 
         if self.append_invariance_tokens:
             tokens = [self.SOS_TOKEN,] + tokens + [self.EOS_TOKEN,]
+            tokens = tokens + [0,] * (77 - len(tokens))
         return torch.tensor(tokens)
 
-    def get_attention_map_location(self, label_list):
+    def get_attention_map_location(self, label_list, handle_not_found=None):
         locations = []
+
         for label in label_list:
             for i in range(len(self.MAPPING)):
                 k, v = [*self.MAPPING[i].items()][0]
                 if k == label:
                     location = v
-            if not self.append_invariance_tokens:
-                location -= 1
-            locations.append(location)
+                    if not self.append_invariance_tokens:
+                        location -= 1
+                    locations.append(location)
+
+        if handle_not_found is not None and locations == []:
+            locations = [handle_not_found,]
         return locations
 
     #def populate_tokens(self, dataset, cond_key):
