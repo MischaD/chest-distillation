@@ -122,15 +122,22 @@ def main(opt):
     if hasattr(opt, "cond_stage_trainable"):
         config["model"]["params"]["cond_stage_trainable"] = opt.cond_stage_trainable
 
+    attention_regularzation = False
     if hasattr(opt, "mlf_args"):
         logger.info(f"Overwriting default arguments of config with {opt.mlf_args}")
-        config["model"]["params"]["attention_regularization"] = opt.mlf_args.get("attention_regularization")
+        attention_regularzation = opt.mlf_args.get("attention_regularization", False)
+        config["model"]["params"]["attention_regularization"] = attention_regularzation
         config["model"]["params"]["cond_stage_key"] = opt.mlf_args.get("cond_stage_key")
         config["model"]["params"]["cond_stage_config"]["params"]["multi_label_finetuning"] = opt.mlf_args.get("multi_label_finetuning")
+
+    if attention_regularzation:
+        logger.info("Applying Attention-Regularization!")
+        config["model"]["params"]["unet_config"]["params"]["attention_save_mode"] = "arm"
 
     if hasattr(opt, "ucg_probability"):
         logger.info(f"Overwriting default arguments of ucg probability with {opt.ucg_probability}")
         config["model"]["params"]["ucg_probability"] = opt.ucg_probability
+
 
 
     config["model"]["base_learning_rate"] = opt.learning_rate

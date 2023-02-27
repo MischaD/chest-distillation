@@ -28,6 +28,7 @@ from src.ldm.models.autoencoder import IdentityFirstStage, AutoencoderKL
 from src.ldm.modules.diffusionmodules.util import make_beta_schedule, extract_into_tensor, noise_like
 from src.ldm.models.diffusion.ddim import DDIMSampler
 from src.preliminary_masks import preprocess_attention_maps
+from src.ldm.util import AttentionSaveMode
 
 
 __conditioning_keys__ = {'concat': 'c_concat',
@@ -860,7 +861,7 @@ class LatentDiffusion(DDPM):
 
     def shared_step(self, batch, **kwargs):
         x, c = self.get_input(batch, self.first_stage_key, cond_key=kwargs.pop("cond_key"))
-        loss = self(x, c)
+        loss = self(x, c, finding_labels=batch.get("finding_labels"))
         return loss
 
     def forward(self, x, c, *args, **kwargs):
@@ -909,7 +910,7 @@ class LatentDiffusion(DDPM):
         kl_prior = normal_kl(mean1=qt_mean, logvar1=qt_log_variance, mean2=0.0, logvar2=0.0)
         return mean_flat(kl_prior) / np.log(2.0)
 
-    def p_losses(self, x_start, cond, t, noise=None):
+    def p_losses(self, x_start, cond, t, noise=None, *args, **kwargs):
         noise = default(noise, lambda: torch.randn_like(x_start))
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
         model_output = self.apply_model(x_noisy, t, cond)
@@ -943,9 +944,37 @@ class LatentDiffusion(DDPM):
         loss_vlb = (self.lvlb_weights[t] * loss_vlb).mean()
         loss_dict.update({f'{prefix}/loss_vlb': loss_vlb})
         loss += (self.original_elbo_weight * loss_vlb)
-        loss_dict.update({f'{prefix}/loss': loss})
 
+        if self.model.diffusion_model.attention_save_mode == AttentionSaveMode.arm:
+            attention_weights = torch.stack(self.model.diffusion_model.get_attention_map()).squeeze(dim=-1).mean(dim=0)
+            attention_weights = attention_weights[:, 0:10]
+
+            target_vector = self.get_target_vector(kwargs.get("finding_labels"))
+            target = torch.zeros_like(attention_weights)
+            for i, target_vec in enumerate(target_vector):
+                target[i, target_vec] = 1
+            if self.cond_stage_model.multi_label_tokenizer.append_invariance_tokens:
+                target = target[:, 1:]
+                attention_weights = attention_weights[:, 1:]
+            else:
+                target = target[:, :-1]
+                attention_weights = attention_weights[:, :-1]
+
+            arm_loss = 1 / target.sum() * (((1 / (attention_weights + torch.finfo(torch.float16).eps))-1) * target).sum()
+            arm_loss = self.attention_regularization * arm_loss * torch.finfo(torch.float16).eps
+            loss += arm_loss
+            loss_dict.update({f'{prefix}/arm_loss': arm_loss})
+
+        loss_dict.update({f'{prefix}/loss': loss})
         return loss, loss_dict
+
+    def get_target_vector(self, batch_labels):
+        batch_locations = []
+        handle_not_found = int(self.cond_stage_model.multi_label_tokenizer.append_invariance_tokens)
+        for labels in batch_labels:
+            labels = labels.split("|")
+            batch_locations.append(self.cond_stage_model.multi_label_tokenizer.get_attention_map_location(labels, handle_not_found=handle_not_found)) # 1 == No Finding
+        return batch_locations
 
     def p_mean_variance(self, x, c, t, clip_denoised: bool, return_codebook_ids=False, quantize_denoised=False,
                         return_x0=False, score_corrector=None, corrector_kwargs=None):

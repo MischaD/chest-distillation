@@ -147,7 +147,7 @@ class SpatialSelfAttention(nn.Module):
 
 
 class CrossAttention(nn.Module):
-    def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0., save_attention=False):
+    def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0., save_attention=False, attention_pooling=False):
         super().__init__()
         inner_dim = dim_head * heads
         context_dim = default(context_dim, query_dim)
@@ -166,6 +166,7 @@ class CrossAttention(nn.Module):
 
         self.save_attention = save_attention
         self.attention_map = None
+        self.attention_pooling_layer = nn.Identity if not attention_pooling else nn.AdaptiveAvgPool1d((1))
 
 
     def forward(self, x, context=None, mask=None):
@@ -198,8 +199,13 @@ class CrossAttention(nn.Module):
         sim = sim.softmax(dim=-1)
 
         if self.save_attention:
-            self.attention_map = torch.clone(rearrange(sim, '(b h) n d -> b h n d', h=h).mean(dim=1, keepdim=True))
-
+            if isinstance(self.attention_pooling_layer, nn.Identity):
+                self.attention_map = torch.clone(rearrange(sim, '(b h) n d -> b h n d', h=h).mean(dim=1, keepdim=True))
+            else:
+                attention_map = rearrange(sim, '(b h) n d -> b h n d', h=h).mean(dim=1)
+                attention_map = rearrange(attention_map, "b n c -> b c n")
+                attention_weights = self.attention_pooling_layer(attention_map)
+                self.attention_map = attention_weights  # b x n-tokens x 1
         out = einsum('b i j, b j d -> b i d', sim, v)
         out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
         return self.to_out(out)
@@ -272,14 +278,15 @@ class BasicTransformerBlock(nn.Module):
             raise NotImplementedError()
 
         save_attn1 = attention_save_mode == AttentionSaveMode("all") or attention_save_mode == AttentionSaveMode("self") # self because it is pixel on pixel attention
-        save_attn2 = attention_save_mode == AttentionSaveMode("all") or attention_save_mode == AttentionSaveMode("cross")
+        save_attn2 = attention_save_mode == AttentionSaveMode("all") or attention_save_mode == AttentionSaveMode("cross") or attention_save_mode == AttentionSaveMode.arm
+        do_attention_pooling = attention_save_mode == AttentionSaveMode.arm
 
         self.attn1 = attn_cls(query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout,
                               context_dim=context_dim if self.disable_self_attn else None,
                               save_attention=save_attn1)  # is a self-attention if not self.disable_self_attn
         self.ff = FeedForward(dim, dropout=dropout, glu=gated_ff)
         self.attn2 = attn_cls(query_dim=dim, context_dim=context_dim,
-                              heads=n_heads, dim_head=d_head, dropout=dropout, save_attention=save_attn2)  # is self-attn if context is none
+                              heads=n_heads, dim_head=d_head, dropout=dropout, save_attention=save_attn2, attention_pooling=do_attention_pooling)  # is self-attn if context is none
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
         self.norm3 = nn.LayerNorm(dim)

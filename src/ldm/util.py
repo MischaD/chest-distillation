@@ -204,4 +204,5 @@ class AttentionSaveMode(Enum):
     off = "off"
     self = "self" # pixel on pixel
     cross = "cross" # pixel on prompt (v)
+    arm = "arm" # training time attention regularization
     all = "all"
