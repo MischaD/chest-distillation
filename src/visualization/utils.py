@@ -14,7 +14,7 @@ MIMIC_STRING_TO_ATTENTION={"Atelectasis":
                            "Cardiomegaly":
                                ["cardiomegaly", "cardiac", ], # enlarged, heart
                            "Consolidation":
-                               ["consolidation", "consolidations"],
+                               ["consolidation", "consolidations", "consolidative", ],
                            "Edema":
                             ["edema",],
                            "Lung Opacity":
@@ -24,7 +24,7 @@ MIMIC_STRING_TO_ATTENTION={"Atelectasis":
                            "Pneumonia":
                            ["opacities", "pneumonia", "opacity"],
                            "Pneumothorax":
-                           ["pneumothorax",],
+                           ["pneumothorax", "pneumothoraces"],
                            }
 
 

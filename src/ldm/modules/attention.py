@@ -166,7 +166,7 @@ class CrossAttention(nn.Module):
 
         self.save_attention = save_attention
         self.attention_map = None
-        self.attention_pooling_layer = nn.Identity if not attention_pooling else nn.AdaptiveAvgPool1d((1))
+        self.attention_pooling_layer = nn.Identity() if not attention_pooling else nn.AdaptiveAvgPool1d((1))
 
 
     def forward(self, x, context=None, mask=None):

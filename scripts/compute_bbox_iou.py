@@ -1,4 +1,5 @@
 import argparse
+import random
 import shutil
 import pprint
 import time
@@ -128,7 +129,6 @@ def main(opt):
         config["model"]["params"]["cond_stage_key"] = opt.mlf_args.get("cond_stage_key")
         config["model"]["params"]["cond_stage_config"]["params"]["multi_label_finetuning"] = opt.mlf_args.get("multi_label_finetuning")
 
-
     model = load_model_from_config(config, f"{opt.ckpt}")
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = model.to(device)
@@ -136,7 +136,10 @@ def main(opt):
         logger.info("Always using DDIM sampler due to empirically better results")
     sampler = DDIMSampler(model)
 
-    dataset.apply_filter_for_disease_in_txt()
+    if opt.filter_bad_impressions:
+        dataset.apply_filter_for_disease_in_txt()
+    else:
+        logger.info("No longer applying filter")
     dataset.load_precomputed(model)
 
     seed_everything(opt.seed)
@@ -190,6 +193,7 @@ def main(opt):
                         logger.info(f"Masks already exists for {samples['rel_path']}")
                         continue
                     #img = model.log_images(samples, cond_key="label_text", unconditional_guidance_scale=1.0, inpaint=False)
+                    samples["label_text"] = [str(random.choice(x.split("|"))) for x in samples["label_text"]]
                     images = model.log_images(samples, N=opt.batch_size, split="test", sample=False, inpaint=True,
                                                   plot_progressive_rows=False, plot_diffusion_rows=False,
                                                   use_ema_scope=False, cond_key=cond_key, mask=1.,
@@ -210,7 +214,7 @@ def main(opt):
                         else:
                             txt_label = samples["label_text"][j]
                             # determine tokenization
-                            txt_label = txt_label.split("|")[0]  # we filter cases with different text labels, all are the same thanks for filtering
+                            txt_label = txt_label.split("|")[0]
                             token_lens = model.cond_stage_model.compute_word_len(txt_label.split(" "))
                             token_positions = list(np.cumsum(token_lens) + 1)
                             token_positions = [1,] + token_positions
@@ -218,10 +222,14 @@ def main(opt):
                             query_words = MIMIC_STRING_TO_ATTENTION[label]
 
                             locations = word_to_slice(txt_label.split(" "), query_words)
-                            assert len(locations) >= 1, f"{samples['dicom_id'][j]}"
-                            for location in locations:
-                                tok_attention = attention[-1*rev_diff_steps:,:,token_positions[location]:token_positions[location+1]]
+                            if len(locations) == 0:
+                                # use all
+                                tok_attention = attention[-1*rev_diff_steps:,:,token_positions[0]:token_positions[-1]]
                                 tok_attentions.append(tok_attention.mean(dim=(0,1,2)))
+                            else:
+                                for location in locations:
+                                    tok_attention = attention[-1*rev_diff_steps:,:,token_positions[location]:token_positions[location+1]]
+                                    tok_attentions.append(tok_attention.mean(dim=(0,1,2)))
 
                         preliminary_attention_mask = torch.stack(tok_attentions).mean(dim=(0))
                         path = os.path.join(mask_dir, samples["rel_path"][j])+ ".pt"
