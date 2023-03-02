@@ -76,5 +76,12 @@ precompute_latent_training_data=True
 n_synth_samples_per_class=625#ignored
 ddim_steps=75
 plms=True
+rali=False
 
-rali=True
+mlf_args = dict(
+    multi_label_finetuning=True,
+    cond_stage_key="finding_labels",
+    append_invariance_tokens=False,
+    single_healthy_class_token=True,
+    attention_regularization=0,
+)

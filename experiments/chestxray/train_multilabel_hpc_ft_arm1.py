@@ -83,7 +83,7 @@ plms=True
 mlf_args = dict(
     multi_label_finetuning=True,
     cond_stage_key="finding_labels",
-    append_invariance_tokens=True,
+    append_invariance_tokens=False,
     single_healthy_class_token=True,
-    attention_regularization=0.05,
+    attention_regularization=1,
 )

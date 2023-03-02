@@ -16,6 +16,7 @@ def get_compute_mask_args():
     parser.add_argument("EXP_NAME", type=str, help="Path to Experiment results")
     parser.add_argument("--ckpt", type=str, default="train")
     parser.add_argument("--mask_dir", type=str, default=None, help="dir to save masks in. Default will be inside log dir and should be used!")
+    parser.add_argument("--filter_bad_impressions", action="store_true", default=False, help="If set, then we use shortned impressions from mscxr")
     return parser.parse_args()
 
 

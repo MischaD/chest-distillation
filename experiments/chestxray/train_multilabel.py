@@ -19,7 +19,7 @@ dataset_args_train = dict(
     split=DatasetSplit("train"),
     #all 8b308d1ff146fc994156bb7f50775f99891bdd33
     #limit_dataset=[0, 10],#c0a08655ac43528158bef787cbfa549c447665dfb
-    limit_dataset=[0, 100],
+    #limit_dataset=[0, 100],
     preload=True,
 )
 dataset_args_val = dict(
@@ -83,7 +83,7 @@ plms=False
 mlf_args = dict(
     multi_label_finetuning=True,
     cond_stage_key="finding_labels",
-    append_invariance_tokens=True,
-    single_healthy_class_token=False,
-    attention_regularization=0.00,
+    append_invariance_tokens=False,
+    single_healthy_class_token=True,
+    attention_regularization=1,
 )
