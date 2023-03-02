@@ -83,6 +83,7 @@ class DDPM(pl.LightningModule):
                  optimizer_type="adam",
                  attention_regularization=0.0,
                  ucg_probability = 0.0,
+                 rali=False,
                  ):
         super().__init__()
         assert parameterization in ["eps", "x0", "v"], 'currently only supporting "eps" and "x0" and "v"'
@@ -143,6 +144,7 @@ class DDPM(pl.LightningModule):
         self.ucg_training = ucg_training or dict()
         if self.ucg_training:
             self.ucg_prng = np.random.RandomState()
+        self.rali = rali
 
     def register_schedule(self, given_betas=None, beta_schedule="linear", timesteps=1000,
                           linear_start=1e-4, linear_end=2e-2, cosine_s=8e-3):
@@ -806,7 +808,11 @@ class LatentDiffusion(DDPM):
                 cond_key = self.cond_stage_key
             if cond_key != self.first_stage_key:
                 if cond_key in ["impression", "finding_labels"]:
-                    xc = batch[cond_key]
+                    if not self.rali:
+                        xc = batch[cond_key]
+                    else:
+                        xc = [batch["impression"], batch["finding_labels"]]
+
                 elif cond_key in ["label_text"]:
                     assert isinstance(batch[cond_key], list)
                     xc = [random.choice(x.split("|")) for x in batch[cond_key]]
@@ -960,6 +966,7 @@ class LatentDiffusion(DDPM):
                 target = target[:, :-1]
                 attention_weights = attention_weights[:, :-1]
 
+            target[:, 0] = 0
             arm_loss = 1 / target.sum() * (((1 / (attention_weights + torch.finfo(torch.float16).eps))-1) * target).sum()
             arm_loss = self.attention_regularization * arm_loss * torch.finfo(torch.float16).eps
             loss += arm_loss
@@ -1301,7 +1308,7 @@ class LatentDiffusion(DDPM):
         if inpaint:
             # make a simple center square
             b, h, w = z.shape[0], z.shape[2], z.shape[3]
-            if kwargs.get("mask"):
+            if kwargs.get("mask") is not None:
                 if isinstance(kwargs.get("mask"), float):
                     mask = torch.full_like(z, kwargs.get("mask"))
                 else:

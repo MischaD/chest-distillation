@@ -329,9 +329,9 @@ class MimicCXRDatasetMSBBOX(MimicCXRDataset):
 
             label_txt = label_txt_split[0]
 
-            if not all_labels_equal:
-                logger.info(f"Dropping the following for different labels: {meta_data_entry['label_text']}")
-                continue
+            #if not all_labels_equal:
+            #    logger.info(f"Dropping the following for different labels: {meta_data_entry['label_text']}")
+            #    continue
 
             locations = word_to_slice(label_txt.split(" "), query_words)
             if len(locations) >= 1:

@@ -138,7 +138,13 @@ def main(opt):
         logger.info(f"Overwriting default arguments of ucg probability with {opt.ucg_probability}")
         config["model"]["params"]["ucg_probability"] = opt.ucg_probability
 
-
+    if hasattr(opt, "mlf_args") and opt.mlf_args["rali"] is not None:
+        rali_mode = opt.mlf_args["rali"]# rali_mode used in tokenizer later
+        logger.info(f"Activating Rali Mode: {rali_mode} - attention_regularization (bool): {attention_regularzation}")
+        config["model"]["params"]["rali"] = True
+        config["model"]["params"]["cond_stage_config"]["params"]["rali"] = rali_mode
+    else:
+        config["model"]["params"]["rali"] = False
 
     config["model"]["base_learning_rate"] = opt.learning_rate
     config["model"]["params"]["optimizer_type"] = opt.optimizer_type
@@ -217,13 +223,12 @@ def main(opt):
         num_val_workers=0,
     )
 
-    if hasattr(opt, "mlf_args") and opt.mlf_args.get("multi_label_finetuning", False):
-        tokenizer = OpenClipDummyTokenizer(opt.seed, opt.mlf_args.get("append_invariance_tokens", False), opt.mlf_args.get("single_healthy_class_token", False))
-        if opt.seed == 4200:
-            tokenization = tokenizer("Consolidation|Cardiomegaly|Pleural Effusion".split("|"))
-            if len(tokenization) != 9:
-                tokenization = tokenization[1:-1]
-            #assert tokenization[1] == 15598 and tokenization[3] == 22073
+    if hasattr(opt, "mlf_args"):
+        tokenizer = OpenClipDummyTokenizer(opt.seed,
+                                           opt.mlf_args.get("append_invariance_tokens", False),
+                                           opt.mlf_args.get("single_healthy_class_token", False),
+                                           rali=opt.mlf_args.get("rali"),
+        )
         model.cond_stage_model.set_multi_label_tokenizer(tokenizer)
 
     logger.info(f"Length of train dataset: {len(train_dataset)}")

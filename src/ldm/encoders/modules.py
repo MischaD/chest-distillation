@@ -1,3 +1,5 @@
+import random
+
 import torch
 import torch.nn as nn
 from torch.utils.checkpoint import checkpoint
@@ -141,7 +143,7 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
         "last",
         "penultimate"
     ]
-    def __init__(self, arch="ViT-H-14", version="laion2b_s32b_b79k", device="cuda", max_length=77, layer="last", multi_label_finetuning=False):
+    def __init__(self, arch="ViT-H-14", version="laion2b_s32b_b79k", device="cuda", max_length=77, layer="last", multi_label_finetuning=False, rali=None):
         super().__init__()
         assert layer in self.LAYERS
         model, _, _ = open_clip.create_model_and_transforms(arch, device=torch.device('cpu'), pretrained=version, cache_dir="./clip/")
@@ -161,6 +163,9 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
         self.multi_label_finetuning = multi_label_finetuning
         self.multi_label_tokenizer = None
         self.attn_mask = torch.fill(torch.zeros(max_length, max_length), -1 * torch.inf).fill_diagonal_(0)
+        if rali is not None:
+            self.is_rali = True
+            self.rali_random = rali == "random"
 
     def set_multi_label_tokenizer(self, multi_label_tokenizer):
         self.multi_label_tokenizer = multi_label_tokenizer
@@ -180,7 +185,42 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
             lens.append(int(sum(out != 0) - 2))
         return lens
 
+    def check_is_rali(self, text):
+        if not isinstance(text, list):
+            return False
+        if not isinstance(text[0], list):
+            return False
+        if not isinstance(text[0][0], str):
+            return False
+        return True
+
     def forward(self, text):
+        if self.is_rali:
+            for i, text_ in enumerate(text[1]):
+                if isinstance(text_, float) or text_ == "":
+                    # happens with nan --> indecisive samples == "No Finding"
+                    text[1][i] = "No Finding"
+
+            relevant_labels = ["No Finding", "Atelectasis", "Cardiomegaly", "Consolidation", "Edema", "Lung Opacity", "Pleural Effusion",
+             "Pneumonia", "Pneumothorax"]
+            new_text = []
+            impressions = text[0]
+            labels_batch = text[1]
+            locs = []
+            for i in range(len(impressions)):
+                labels = labels_batch[i].split("|")
+                labels = [l for l in labels if l in relevant_labels]
+                random.shuffle(labels)
+
+                loc = 0 if not self.rali_random else random.randint(0, 5)
+                locs.append(loc)
+                impression = impressions[i].split(" ")
+                delimiter = "" if loc == 0 else " "
+                new_text.append(
+                    " ".join(impression[:loc]) + delimiter + " ".join(labels) + " " + " ".join(impression[loc:])
+                )
+            text = new_text
+
         if not self.multi_label_finetuning:
             tokens = open_clip.tokenize(text)
         else:
@@ -189,12 +229,12 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
                     # happens with nan --> indecisive samples == "No Finding"
                     text[i] = "No Finding"
             tokens = torch.stack([self.multi_label_tokenizer(text_.split("|")) for text_ in text])
-        z = self.encode_with_transformer(tokens.to(self.device))
+        z = self.encode_with_transformer(tokens.to(self.device), is_rali=self.is_rali)
         return z
 
-    def encode_with_transformer(self, text):
+    def encode_with_transformer(self, text, is_rali=False):
         x = self.model.token_embedding(text)  # [batch_size, n_ctx, d_model]
-        if not self.multi_label_finetuning:
+        if not self.multi_label_finetuning or is_rali:
             x = x + self.model.positional_embedding
             x = x.permute(1, 0, 2)  # NLD -> LND
             x = self.text_transformer_forward(x, attn_mask=self.model.attn_mask[:])
@@ -253,13 +293,16 @@ class OpenClipDummyTokenizer:
         {"Support Devices": 14},
     ]
 
-    def __init__(self, seed, append_invariance_tokens, single_healthy_class_token):
+    def __init__(self, seed, append_invariance_tokens, single_healthy_class_token, rali=None):
         r = np.random.RandomState(seed)
         mapping_to_token = np.arange(1, self.N_TOKENS - 2)
         r.shuffle(mapping_to_token)
         self.mapping_to_token = mapping_to_token
         self.append_invariance_tokens = append_invariance_tokens
         self.single_healthy_class_token = single_healthy_class_token
+        if rali is not None:
+            self.is_rali = True
+            self.rali_random = rali == "random"
 
     def __call__(self, label_list):
         "Doublecheck empty --> Should be the same as No Finding"

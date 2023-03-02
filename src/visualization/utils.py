@@ -22,7 +22,7 @@ MIMIC_STRING_TO_ATTENTION={"Atelectasis":
                            "Pleural Effusion":
                            ["pleural", "effusion", "effusions"],
                            "Pneumonia":
-                           ["opacities", "pneumonia", "opacity"],
+                           ["pneumonia",],
                            "Pneumothorax":
                            ["pneumothorax", "pneumothoraces"],
                            }

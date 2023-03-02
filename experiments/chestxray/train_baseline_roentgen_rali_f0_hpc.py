@@ -4,7 +4,7 @@ from src.preliminary_masks import AttentionExtractor
 
 debug = True
 
-root = "/vol/ideadata/ed52egek"
+root = "/home/atuin/b143dc/b143dc11"
 data_dir = os.path.join(root, "data/mimic/jpg/physionet.org/files/mimic-cxr-jpg/2.0.0/") # data
 work_dir = os.path.join(root, "pycharm/chest-distillation") # code, config
 ckpt = os.path.join(root, "diffusionmodels/latentdiffusion/512-base-ema.ckpt")
@@ -36,7 +36,6 @@ dataset_args_testp19 = dict(
     preload=True,
 )
 
-
 dataset_args_test = dict(
     dataset="chestxraymimicbbox",
     base_dir=data_dir,
@@ -63,7 +62,7 @@ learning_rate=5e-5
 ucg_probability=0.3
 
 # dataloading
-batch_size=4
+batch_size=16
 num_workers=1
 
 #trainer
@@ -83,5 +82,5 @@ mlf_args = dict(
     append_invariance_tokens=False,
     single_healthy_class_token=True,
     attention_regularization=0,
-    rali="first"# first, random, or None
+    rali="first"  # first, random, or None
 )

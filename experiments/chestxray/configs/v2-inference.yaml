@@ -67,3 +67,4 @@ model:
       params:
         layer: "penultimate"
         multi_label_finetuning: False
+        rali: False
