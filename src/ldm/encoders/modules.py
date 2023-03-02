@@ -194,6 +194,25 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
             return False
         return True
 
+    def save_token_position_for_text(self, locs, impressions_at_beggining, impressions_at_beggining_with_disease_labels):
+        """ Given the word locations of some input text, return the tokens corresponding to the class
+        """
+        tokens_beginning = open_clip.tokenize(impressions_at_beggining)
+        tokens_beginning_with_disease = open_clip.tokenize(impressions_at_beggining_with_disease_labels)
+        # padded has value 0
+        pos_token_beginning = torch.argmin(tokens_beginning, dim=1)
+        token_lens = torch.argmin(tokens_beginning_with_disease, dim=1) - pos_token_beginning
+        pos_token_beginning -= 1
+
+        locations = []
+        for i in range(len(impressions_at_beggining)):
+            location = torch.zeros((1, 77))
+            if not impressions_at_beggining_with_disease_labels[i].endswith("No Finding"):
+                location[0, pos_token_beginning[i]:pos_token_beginning[i] + token_lens[i]] = 1
+            locations.append(location)
+        self.attention_locations = torch.cat(locations).to("cuda")
+        return locs
+
     def forward(self, text):
         if self.is_rali:
             for i, text_ in enumerate(text[1]):
@@ -207,6 +226,9 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
             impressions = text[0]
             labels_batch = text[1]
             locs = []
+            impressions_at_beggining = []
+            impressions_at_beggining_with_disease_labels = []
+
             for i in range(len(impressions)):
                 labels = labels_batch[i].split("|")
                 labels = [l for l in labels if l in relevant_labels]
@@ -216,13 +238,22 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
                 locs.append(loc)
                 impression = impressions[i].split(" ")
                 delimiter = "" if loc == 0 else " "
+
+                impression_at_beggining = " ".join(impression[:loc]) + delimiter
+                impression_at_beggining_with_disease_labels = impression_at_beggining + " ".join(labels)
                 new_text.append(
-                    " ".join(impression[:loc]) + delimiter + " ".join(labels) + " " + " ".join(impression[loc:])
+                    impression_at_beggining_with_disease_labels + " " + " ".join(impression[loc:])
                 )
+
+                # log for token position extraction
+                impressions_at_beggining_with_disease_labels.append(impression_at_beggining_with_disease_labels)
+                impressions_at_beggining.append(impression_at_beggining)
             text = new_text
 
         if not self.multi_label_finetuning:
             tokens = open_clip.tokenize(text)
+            if self.is_rali:
+                self.save_token_position_for_text(locs, impressions_at_beggining, impressions_at_beggining_with_disease_labels)
         else:
             for i, text_ in enumerate(text):
                 if isinstance(text_, float) or text_ == "":

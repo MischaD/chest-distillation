@@ -477,9 +477,12 @@ class DDPM(pl.LightningModule):
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
-        _, loss_dict_no_ema = self.shared_step(batch, cond_key="label_text")
+        if batch.get("impression") is None:
+            batch["impression"] = batch["label_text"]
+        self.shared_step(batch, cond_key=self.cond_stage_key)
+        _, loss_dict_no_ema = self.shared_step(batch, cond_key=self.cond_stage_key)
         with self.ema_scope():
-            _, loss_dict_ema = self.shared_step(batch, cond_key="label_text")
+            _, loss_dict_ema = self.shared_step(batch, cond_key=self.cond_stage_key)
             loss_dict_ema = {key + '_ema': loss_dict_ema[key] for key in loss_dict_ema}
         self.log_dict(loss_dict_no_ema, prog_bar=False, logger=True, on_step=False, on_epoch=True)
         self.log_dict(loss_dict_ema, prog_bar=False, logger=True, on_step=False, on_epoch=True)
@@ -866,8 +869,11 @@ class LatentDiffusion(DDPM):
         return self.first_stage_model.encode(x)
 
     def shared_step(self, batch, **kwargs):
-        x, c = self.get_input(batch, self.first_stage_key, cond_key=kwargs.pop("cond_key"))
-        loss = self(x, c, finding_labels=batch.get("finding_labels"))
+        cond_key = kwargs.pop("cond_key")
+        x, c = self.get_input(batch, self.first_stage_key, cond_key=cond_key)
+
+        rali_in = batch[cond_key] if self.rali else None
+        loss = self(x, c, finding_labels=batch.get("finding_labels"), rali_in=rali_in)
         return loss
 
     def forward(self, x, c, *args, **kwargs):
@@ -953,25 +959,35 @@ class LatentDiffusion(DDPM):
 
         if self.model.diffusion_model.attention_save_mode == AttentionSaveMode.arm:
             attention_weights = torch.stack(self.model.diffusion_model.get_attention_map()).squeeze(dim=-1).mean(dim=0)
-            attention_weights = attention_weights[:, 0:10]
 
-            target_vector = self.get_target_vector(kwargs.get("finding_labels"))
-            target = torch.zeros_like(attention_weights)
-            for i, target_vec in enumerate(target_vector):
-                target[i, target_vec] = 1
-            if self.cond_stage_model.multi_label_tokenizer.append_invariance_tokens:
-                target = target[:, 1:]
-                attention_weights = attention_weights[:, 1:]
-            else:
-                target = target[:, :-1]
-                attention_weights = attention_weights[:, :-1]
+            if not self.rali:
+                attention_weights = attention_weights[:, 0:10]
 
-            target[:, 0] = 0
-            arm_loss = 1 / target.sum() * (((1 / (attention_weights + torch.finfo(torch.float16).eps))-1) * target).sum()
-            arm_loss = self.attention_regularization * arm_loss * torch.finfo(torch.float16).eps
-            loss += arm_loss
-            loss_dict.update({f'{prefix}/arm_loss': arm_loss})
+                target_vector = self.get_target_vector(kwargs.get("finding_labels"))
+                attention_target = torch.zeros_like(attention_weights)
+                for i, target_vec in enumerate(target_vector):
+                    attention_target[i, target_vec] = 1
+                if self.cond_stage_model.multi_label_tokenizer.append_invariance_tokens:
+                    attention_target = attention_target[:, 1:]
+                    attention_weights = attention_weights[:, 1:]
+                else:
+                    attention_target = attention_target[:, :-1]
+                    attention_weights = attention_weights[:, :-1]
 
+                attention_target[:, 0] = 0
+                arm_loss = 1 / attention_target.sum() * (((1 / (attention_weights + torch.finfo(torch.float16).eps))-1) * attention_target).sum()
+                arm_loss = self.attention_regularization * arm_loss * torch.finfo(torch.float16).eps
+                loss += arm_loss
+                loss_dict.update({f'{prefix}/arm_loss': arm_loss})
+            if self.rali:
+                attention_target = self.cond_stage_model.attention_locations
+                if attention_target.sum() != 0:
+                    arm_loss = 1 / attention_target.sum() * (((1 / (attention_weights + torch.finfo(torch.float16).eps))-1) * attention_target).sum()
+                    arm_loss = self.attention_regularization * arm_loss * torch.finfo(torch.float16).eps
+                    loss += arm_loss
+                else:
+                    arm_loss = 0
+                loss_dict.update({f'{prefix}/arm_loss': arm_loss})
         loss_dict.update({f'{prefix}/loss': loss})
         return loss, loss_dict
 
