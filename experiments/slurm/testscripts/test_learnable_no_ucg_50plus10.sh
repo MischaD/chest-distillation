@@ -1,6 +1,6 @@
 #!/bin/bash -l
 #SBATCH --time=24:00:00
-#SBATCH --job-name=TestFrNoUCG
+#SBATCH --job-name=TestNoUCG60p10
 #SBATCH --gres=gpu:a100:1
 #SBATCH --partition=a100
 #SBATCH -C a100_80
@@ -15,12 +15,12 @@ source activate chest
 
 cd $WORK/pycharm/chest-distillation
 
-
-EXPERIMENT_NAME='finetune-sd-bs256-noucg'
-LOG_DIR_TIMESTAMP='2023-02-16T22-44-16'
-CHECKPOINT_FILENAME='global_step=60000.ckpt' # rest determined automatically for your own safety
+EXPERIMENT_NAME='noucg50p10'
+LOG_DIR_TIMESTAMP='2023-03-03T17-33-26'
+CHECKPOINT_FILENAME='global_step=10000.ckpt' # rest determined automatically for your own safety
 EXPERIMENT_FILE_PATH='experiments/chestxray/test_textual_models_hpc.py'
 # TODO DOUBLE CHECK If this is a baseline run - if so --> do not use mscxr-labels
+log//
 
 # ======================================================================================================================
 

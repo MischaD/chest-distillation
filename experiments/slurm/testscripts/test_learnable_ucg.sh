@@ -1,6 +1,6 @@
 #!/bin/bash -l
 #SBATCH --time=24:00:00
-#SBATCH --job-name=TestSDv2
+#SBATCH --job-name=TestLeUCG
 #SBATCH --gres=gpu:a100:1
 #SBATCH --partition=a100
 #SBATCH -C a100_80
@@ -15,9 +15,9 @@ source activate chest
 
 cd $WORK/pycharm/chest-distillation
 
-EXPERIMENT_NAME='mlf-invariancefalse-singlehealthytrue-arm1'
-LOG_DIR_TIMESTAMP='2023-02-27T10-00-29'
-CHECKPOINT_FILENAME='global_step=30000.ckpt' # rest determined automatically for your own safety
+EXPERIMENT_NAME='baseline-learnable'
+LOG_DIR_TIMESTAMP='2023-02-26T10-42-51'
+CHECKPOINT_FILENAME='global_step=60000.ckpt' # rest determined automatically for your own safety
 EXPERIMENT_FILE_PATH='experiments/chestxray/test_textual_models_hpc.py'
 # TODO DOUBLE CHECK If this is a baseline run - if so --> do not use mscxr-labels
 
@@ -39,8 +39,8 @@ python scripts/classify_chest_xray.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --i
 
 # mscxr labels
 python scripts/sample_model.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --ckpt=$CHECKPOINT_PATH --img_dir=$LOG_DIR/generatedevenlymscxr --N=5000 --label_list_path=$FID_REFERENCE_DATASET_EVENLY
-python scripts/calc_fid.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME $LOG_DIR/generatedevenly $FID_REFERENCE_DATASET_EVENLY --result_dir=$LOG_DIR/generatedevenlymscxr
-python scripts/classify_chest_xray.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --img_dir=$LOG_DIR/generatedevenlymscxr
+python scripts/calc_fid.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME $LOG_DIR/generatedevenlymscxr $FID_REFERENCE_DATASET_EVENLY --result_dir=$LOG_DIR/generatedevenlymscxr
+python scripts/classify_chest_xray.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME $LOG_DIR/generatedevenlymscxr
 
 
 python scripts/calc_ms_ssim.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --ckpt=$CHECKPOINT_PATH --n_sample_sets=100 --trial_size=4 --img_dir=$LOG_DIR/ms_ssim_mscxr
