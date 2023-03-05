@@ -76,5 +76,3 @@ precompute_latent_training_data=True
 n_synth_samples_per_class=625#ignored
 ddim_steps=75
 plms=True
-
-rali=True

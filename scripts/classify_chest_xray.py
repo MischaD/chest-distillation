@@ -78,7 +78,6 @@ def main(opt):
     results["idxmax"] = val_cols.idxmax(axis="columns")
     #results["idxmaxvalue"] = val_cols.max(axis="columns")
     results["idxmax"] = results["idxmax"].map(lambda x: x.replace("Effusion", "Plural Effusion"))
-    # TODO THIS is EFFUSION?
     results["top1"] = results["idxmax"] == results["label"]
 
     top1score = dict(results.groupby("label")["top1"].mean())

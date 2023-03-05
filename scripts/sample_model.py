@@ -42,6 +42,11 @@ def main(opt):
         config["model"]["params"]["cond_stage_key"] = opt.mlf_args.get("cond_stage_key")
         config["model"]["params"]["cond_stage_config"]["params"]["multi_label_finetuning"] = opt.mlf_args.get("multi_label_finetuning")
 
+    is_rali = False
+    if hasattr(opt, "mlf_args") and opt.mlf_args["rali"] is not None:
+        config["model"]["params"]["rali"] = True
+        is_rali = True
+
     model = load_model_from_config(config, f"{opt.ckpt}")
 
     device = torch.device("cuda")
@@ -81,6 +86,9 @@ def main(opt):
                 tokenization = tokenization[1:-1]
             #assert tokenization[1] == 15598 and tokenization[3] == 22073
         model.cond_stage_model.set_multi_label_tokenizer(tokenizer)
+    elif is_rali:
+        tokenizer = OpenClipDummyTokenizer(opt.seed, False, True, rali=True)
+        model.cond_stage_model.set_multi_label_tokenizer(tokenizer)
 
     os.makedirs(img_dir, exist_ok=True)
     for label in labels:
@@ -106,11 +114,16 @@ def main(opt):
                     classes = [list(x.keys())[0] for x in samples]
                     if is_mlf:
                         c = model.get_learned_conditioning(classes)
+                    elif is_rali:
+                        c = model.get_learned_conditioning([classes, prompts])
                     else:
                         c = model.get_learned_conditioning(prompts)
 
                     if opt.scale != 1.0:
-                        uc = model.get_learned_conditioning(len(c) * [""])
+                        if is_rali:
+                            uc = model.get_learned_conditioning([len(c) * ["No Finding",], len(c) * [""]])
+                        else:
+                            uc = model.get_learned_conditioning(len(c) * [""])
 
                     start_code = torch.randn([len(c), opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
 

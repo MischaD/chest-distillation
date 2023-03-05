@@ -458,7 +458,10 @@ class DDPM(pl.LightningModule):
         for i, s in enumerate(batch["finding_labels"]):
             if s == "No Finding":
                 if bool(torch.rand(1) < self.ucg_probability):
-                    batch[self.cond_stage_key][i] = ""
+                    if self.rali:
+                        batch["impression"][i] = ""
+                    else:
+                        batch[self.cond_stage_key][i] = ""
 
         loss, loss_dict = self.shared_step(batch, cond_key=self.cond_stage_key)
 

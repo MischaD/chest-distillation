@@ -289,15 +289,19 @@ class MimicCXRDataset(FOBADataset):
 class MimicCXRDatasetMSBBOX(MimicCXRDataset):
     def __init__(self, dataset_args, opt):
         self._bbox_meta_data = None
+        self._csv_name = "mimic_sccxr_preprocessed.csv"
         assert dataset_args["split"] == DatasetSplit("mscxr")
+        if dataset_args.get("phrase_grounding", False):
+            self._csv_name = "mimi_scxr_phrase_grounding_preprocessed.csv"
+
         super().__init__(dataset_args, opt)
 
     @property
     def bbox_meta_data(self):
-        return pd.read_csv(os.path.join(self.base_dir, "mimic_sccxr_preprocessed.csv"), index_col="dicom_id")
+        return pd.read_csv(os.path.join(self.base_dir, self._csv_name), index_col="dicom_id")
 
     def _build_dataset(self):
-        data = [dict(rel_path=os.path.join(img_path.replace(".dcm", ".jpg")), finding_labels=labels) for img_path, labels in zip(list(self.bbox_meta_data.paths), list(self.bbox_meta_data["category_name"]))]
+        data = [dict(dicom_id=dicom_id, rel_path=os.path.join(img_path.replace(".dcm", ".jpg")), finding_labels=labels) for img_path, labels, dicom_id in zip(list(self.bbox_meta_data.paths), list(self.bbox_meta_data["category_name"]), self.bbox_meta_data.index)]
         self.data = data
         if self.shuffle:
             np.random.shuffle(self.data)
@@ -345,7 +349,6 @@ class MimicCXRDatasetMSBBOX(MimicCXRDataset):
     def _load_images(self, index):
         assert len(index)
         entry = self.data[index[0]].copy()
-        entry["dicom_id"] = os.path.basename(entry["rel_path"]).rstrip(".jpg")
         entry["img"] = self._load_image(os.path.join(self.base_dir, entry["rel_path"].replace(".dcm", ".jpg")))
 
         meta_data_entry = self.bbox_meta_data.loc[entry["dicom_id"]]

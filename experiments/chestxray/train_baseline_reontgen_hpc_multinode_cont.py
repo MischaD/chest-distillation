@@ -4,10 +4,10 @@ from src.preliminary_masks import AttentionExtractor
 
 debug = True
 
-root = "/vol/ideadata/ed52egek"
+root = "/home/atuin/b143dc/b143dc11"
 data_dir = os.path.join(root, "data/mimic/jpg/physionet.org/files/mimic-cxr-jpg/2.0.0/") # data
 work_dir = os.path.join(root, "pycharm/chest-distillation") # code, config
-ckpt = os.path.join(root, "diffusionmodels/latentdiffusion/512-base-ema.ckpt")
+ckpt = os.path.join(root, "pycharm/chest-distillation/log/finetune-sd-bs256-learnable-noucg/2023-02-19T20-58-01/checkpoints/global_step=60000.ckpt")
 
 config_path = os.path.join(work_dir, "experiments/chestxray/configs/v2-chest-training.yaml")
 config_path_inference = os.path.join(work_dir, "experiments/chestxray/configs/v2-inference.yaml")
@@ -26,7 +26,8 @@ dataset_args_val = dict(
     dataset="chestxraymimicbbox",
     base_dir=data_dir,
     split=DatasetSplit("mscxr"),
-    limit_dataset=[0, 64],  # 6d79a86d53fe64e8ea8dca6e81be75b0edfd98c4
+    limit_dataset=[0, 64], #213851912adf554689226fff69183d41d96f6d44
+    #limit_dataset=[0, 10], #c0a08655ac43528158bef787cbfa549c447665df
     preload=True,
 )
 dataset_args_testp19 = dict(
@@ -36,18 +37,15 @@ dataset_args_testp19 = dict(
     preload=True,
 )
 
-
 dataset_args_test = dict(
     dataset="chestxraymimicbbox",
     base_dir=data_dir,
     split=DatasetSplit("mscxr"),
     #0-1133 10d6f749d36ca86d83cdd19bca06a7e9d52a08b5
-    #limit_dataset=[0, 5],
+    #limit_dataset=[0, 12],
     preload=True,
     save_original_images=True,
-    phrase_grounding=False,
 )
-
 
 # dataset
 C=4 # latent channels
@@ -59,31 +57,22 @@ f=8
 seed=4200
 ddim_eta = 0.0 # 0 corresponds to deterministic sampling
 scale = 4
-cond_stage_trainable=True
+cond_stage_trainable=False
 optimizer_type="adam" # adam or lion
 learning_rate=5e-5
-ucg_probability=0.3
+ucg_probability=0.0
 
 # dataloading
-batch_size=4
+batch_size=16
 num_workers=1
 
 #trainer
-max_steps=30001#just to make sure 60k is saved
+max_steps=10001#just to make sure 60k is saved
 checkpoint_save_frequency=10000
-num_nodes=1
+num_nodes=2
 precompute_latent_training_data=True
 
 #sample
-n_synth_samples_per_class=625
+n_synth_samples_per_class=625#ignored
 ddim_steps=75
 plms=True
-
-mlf_args = dict(
-    multi_label_finetuning=False,
-    cond_stage_key="finding_labels",
-    append_invariance_tokens=False,
-    single_healthy_class_token=True,
-    attention_regularization=0,
-    rali="random"# first, random, or None
-)

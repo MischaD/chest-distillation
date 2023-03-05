@@ -127,8 +127,8 @@ class FOBADataset(Dataset):
             return self._load_images(np.random.randint(len(self)))
         return entry
 
-    def add_preliminary_to_sample(self, entry):
-        entry["preliminary_mask"] = torch.load(os.path.join(self._preliminary_masks_path, entry["rel_path"] + ".pt"))
+    def add_preliminary_to_sample(self, entry, path):
+        entry["preliminary_mask"] = torch.load(path)
         return entry
 
     def add_preliminary_masks(self, base_path=None, sanity_check=True):

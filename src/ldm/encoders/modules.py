@@ -164,7 +164,7 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
         self.multi_label_tokenizer = None
         self.attn_mask = torch.fill(torch.zeros(max_length, max_length), -1 * torch.inf).fill_diagonal_(0)
         if rali is not None:
-            self.is_rali = True
+            self.is_rali = rali
             self.rali_random = rali == "random"
 
     def set_multi_label_tokenizer(self, multi_label_tokenizer):

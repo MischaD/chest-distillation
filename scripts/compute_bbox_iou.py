@@ -98,7 +98,7 @@ def contrast_to_noise_ratio(ground_truth_img, prelim_mask_large):
 
     contrast = roi_values.mean() - not_roi_values.mean()
     noise = torch.sqrt(
-        roi_values.var() / 2 + not_roi_values.var() / 2
+        roi_values.var() + not_roi_values.var()
     )
     cnr = contrast / noise
     return cnr
@@ -112,8 +112,23 @@ def check_mask_exists(mask_dir, samples):
     return True
 
 
+def samples_to_path(mask_dir, samples, j):
+    sample_path = samples["rel_path"][j]
+    label = samples["finding_labels"][j]
+    impr = samples["impression"][j].replace(" ", "_")
+    path = os.path.join(mask_dir, sample_path + label + impr) + ".pt"
+    logger.info(f"StoPath: {path}")
+    return path
+
+
 def main(opt):
+    if opt.phrase_grounding_mode:
+        opt.dataset_args_test["phrase_grounding"] = True
+    else:
+        opt.dataset_args_test["phrase_grounding"] = False
+
     dataset = get_dataset(opt, "test")
+
     logger.info(f"Length of dataset: {len(dataset)}")
 
     config = OmegaConf.load(f"{opt.config_path}")
@@ -129,6 +144,13 @@ def main(opt):
         config["model"]["params"]["cond_stage_key"] = opt.mlf_args.get("cond_stage_key")
         config["model"]["params"]["cond_stage_config"]["params"]["multi_label_finetuning"] = opt.mlf_args.get("multi_label_finetuning")
 
+    is_rali = False
+    if hasattr(opt, "mlf_args") and opt.mlf_args.get("rali") is not None:
+        rali_mode = opt.mlf_args["rali"]
+        is_rali = True
+        config["model"]["params"]["rali"] = True
+        config["model"]["params"]["cond_stage_config"]["params"]["rali"] = rali_mode
+
     model = load_model_from_config(config, f"{opt.ckpt}")
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = model.to(device)
@@ -137,9 +159,10 @@ def main(opt):
     sampler = DDIMSampler(model)
 
     if opt.filter_bad_impressions:
+        if opt.phrase_grounding_mode:
+            logger.warning("Filtering cannot be combined with phrase grounding")
         dataset.apply_filter_for_disease_in_txt()
-    else:
-        logger.info("No longer applying filter")
+
     dataset.load_precomputed(model)
 
     seed_everything(opt.seed)
@@ -153,23 +176,20 @@ def main(opt):
 
     # visualization args
     rev_diff_steps = 40
-    num_repeat_each_diffusion_step = 1
 
-    start_reverse_diffusion_from_t = int((rev_diff_steps - 1) * (sampler.ddpm_num_timesteps // opt.ddim_steps) + 1)
-
+    cond_key = "label_text"
     if is_mlf:
-        tokenizer = OpenClipDummyTokenizer(opt.seed, opt.mlf_args.get("append_invariance_tokens", False), opt.mlf_args.get("single_healthy_class_token", False))
-        if opt.seed == 4200:
-            tokenization = tokenizer("Consolidation|Cardiomegaly|Pleural Effusion".split("|"))
-            if len(tokenization) != 9:
-                tokenization = tokenization[1:-1]
-            #assert tokenization[1] == 15598 and tokenization[3] == 22073
+        rali = "first" if is_rali else None
+        tokenizer = OpenClipDummyTokenizer(opt.seed, opt.mlf_args.get("append_invariance_tokens", False), opt.mlf_args.get("single_healthy_class_token", False), rali=rali,)
         model.cond_stage_model.set_multi_label_tokenizer(tokenizer)
+        cond_key = "finding_labels"
+    elif is_rali:
+        tokenizer = OpenClipDummyTokenizer(opt.seed, False, True, rali=is_rali)
+        model.cond_stage_model.set_multi_label_tokenizer(tokenizer)
+        cond_key = "impression"
 
-    cond_key = "finding_labels" if "is_mlf" else "label_text"
     logger.info(f"Relative path to first sample: {dataset[0]['rel_path']}")
 
-    print(start_reverse_diffusion_from_t)
     dataloader = DataLoader(dataset,
                             batch_size=opt.batch_size,
                             shuffle=False,
@@ -185,6 +205,7 @@ def main(opt):
         mask_dir = os.path.join(opt.log_dir, "preliminary_masks")
     logger.info(f"Mask dir: {mask_dir}")
 
+    logger.info(f"Starting to generate masks with is_rali:{is_rali} and is_mlf:{is_mlf}")
     for samples in tqdm(dataloader, "generating masks"):
         with torch.no_grad():
             with precision_scope("cuda"):
@@ -193,8 +214,10 @@ def main(opt):
                         logger.info(f"Masks already exists for {samples['rel_path']}")
                         continue
                     #img = model.log_images(samples, cond_key="label_text", unconditional_guidance_scale=1.0, inpaint=False)
-                    samples["label_text"] = [str(random.choice(x.split("|"))) for x in samples["label_text"]]
-                    images = model.log_images(samples, N=opt.batch_size, split="test", sample=False, inpaint=True,
+                    samples["label_text"] = [str(x.split("|")[0]) for x in samples["label_text"]]
+                    samples["impression"] = samples["label_text"]
+
+                    images = model.log_images(samples, N=len(samples["label_text"]), split="test", sample=False, inpaint=True,
                                                   plot_progressive_rows=False, plot_diffusion_rows=False,
                                                   use_ema_scope=False, cond_key=cond_key, mask=1.,
                                                   save_attention=True)
@@ -211,6 +234,13 @@ def main(opt):
                                                 token_position:token_position+ 1]
                                 tok_attentions.append(tok_attention.mean(dim=(0, 1, 2)))
 
+                        elif is_rali:
+                            token_positions = model.cond_stage_model.attention_locations
+                            start = torch.argmax(token_positions[j])
+                            stop = torch.argmin(token_positions[j][start:]) + start
+                            tok_attention = attention[-1 * rev_diff_steps:, :,
+                                            start:stop]
+                            tok_attentions.append(tok_attention.mean(dim=(0, 1, 2)))
                         else:
                             txt_label = samples["label_text"][j]
                             # determine tokenization
@@ -232,7 +262,7 @@ def main(opt):
                                     tok_attentions.append(tok_attention.mean(dim=(0,1,2)))
 
                         preliminary_attention_mask = torch.stack(tok_attentions).mean(dim=(0))
-                        path = os.path.join(mask_dir, samples["rel_path"][j])+ ".pt"
+                        path = samples_to_path(mask_dir, samples, j)
                         os.makedirs(os.path.dirname(path), exist_ok=True)
                         logger.info(f"Saving attention mask to {path}")
                         torch.save(preliminary_attention_mask.to("cpu"), path)
@@ -250,10 +280,12 @@ def main(opt):
     for samples in tqdm(dataloader, "computing metrics"):
         #z, c, x, xrec = model.get_input(samples, "img", cond_key="label_text", bs=len(samples["rel_path"]),
         #                                    return_first_stage_outputs=True)
+        samples["label_text"] = [str(x.split("|")[0]) for x in samples["label_text"]]
+        samples["impression"] = samples["label_text"]
 
         for i in range(len(samples["img"])):
             sample = {k: v[i] for k, v in samples.items()}
-            dataset.add_preliminary_to_sample(sample)
+            dataset.add_preliminary_to_sample(sample, samples_to_path(mask_dir, samples, i))
             bboxes = sample["bboxxywh"].split("|")
             bbox_meta = dataset.bbox_meta_data.loc[sample["dicom_id"]]
             img_size = [bbox_meta["image_width"], bbox_meta["image_height"]]
