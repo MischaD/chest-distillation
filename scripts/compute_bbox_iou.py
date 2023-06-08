@@ -31,7 +31,7 @@ from log import logger, log_experiment
 from log import formatter as log_formatter
 from tqdm import tqdm
 import logging
-from utils import get_compute_mask_args, make_exp_config, load_model_from_config, collate_batch, img_to_viz
+from utils import get_compute_mask_args, make_exp_config, load_model_from_config, collate_batch, img_to_viz, main_setup
 from einops import reduce, rearrange, repeat
 from pytorch_lightning import seed_everything
 from mpl_toolkits.axes_grid1 import ImageGrid
@@ -121,57 +121,51 @@ def samples_to_path(mask_dir, samples, j):
     return path
 
 
-def main(opt):
-    if opt.phrase_grounding_mode:
-        opt.dataset_args_test["phrase_grounding"] = True
+def main(config):
+    if config.phrase_grounding_mode:
+        config.datasets.test["phrase_grounding"] = True
     else:
-        opt.dataset_args_test["phrase_grounding"] = False
+        config.datasets.test["phrase_grounding"] = False
 
-    dataset = get_dataset(opt, "test")
+    dataset = get_dataset(config, "test")
 
     logger.info(f"Length of dataset: {len(dataset)}")
 
-    config = OmegaConf.load(f"{opt.config_path}")
-    config["model"]["params"]["use_ema"] = False
-    config["model"]["params"]["unet_config"]["params"]["attention_save_mode"] = "cross"
+    model_config = OmegaConf.load(f"{config.config_path}")
+    model_config["model"]["params"]["use_ema"] = False
+    model_config["model"]["params"]["unet_config"]["params"]["attention_save_mode"] = "cross"
     logger.info(f"Enabling attention save mode")
 
     is_mlf = False
-    if hasattr(opt, "mlf_args"):
-        is_mlf = opt.mlf_args.get("multi_label_finetuning", False)
-        logger.info(f"Overwriting default arguments of config with {opt.mlf_args}")
-        config["model"]["params"]["attention_regularization"] = opt.mlf_args.get("attention_regularization")
-        config["model"]["params"]["cond_stage_key"] = opt.mlf_args.get("cond_stage_key")
-        config["model"]["params"]["cond_stage_config"]["params"]["multi_label_finetuning"] = opt.mlf_args.get("multi_label_finetuning")
+    if hasattr(config, "mlf_args"):
+        is_mlf = config.mlf_args.get("multi_label_finetuning", False)
+        logger.info(f"Overwriting default arguments of config with {config.mlf_args}")
+        model_config["model"]["params"]["attention_regularization"] = config.mlf_args.get("attention_regularization")
+        model_config["model"]["params"]["cond_stage_key"] = config.mlf_args.get("cond_stage_key")
+        model_config["model"]["params"]["cond_stage_config"]["params"]["multi_label_finetuning"] = config.mlf_args.get("multi_label_finetuning")
 
     is_rali = False
-    if hasattr(opt, "mlf_args") and opt.mlf_args.get("rali") is not None:
-        rali_mode = opt.mlf_args["rali"]
+    if hasattr(config, "mlf_args") and config.mlf_args.get("rali") is not None:
+        rali_mode = config.mlf_args["rali"]
         is_rali = True
-        config["model"]["params"]["rali"] = True
-        config["model"]["params"]["cond_stage_config"]["params"]["rali"] = rali_mode
+        model_config["model"]["params"]["rali"] = True
+        model_config["model"]["params"]["cond_stage_config"]["params"]["rali"] = rali_mode
 
-    model = load_model_from_config(config, f"{opt.ckpt}")
+    model = load_model_from_config(model_config, f"{config.ckpt}")
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = model.to(device)
-    if opt.plms:
+    if config.sample.plms:
         logger.info("Always using DDIM sampler due to empirically better results")
     sampler = DDIMSampler(model)
 
-    if opt.filter_bad_impressions:
-        if opt.phrase_grounding_mode:
+    if config.filter_bad_impressions:
+        if config.phrase_grounding_mode:
             logger.warning("Filtering cannot be combined with phrase grounding")
         dataset.apply_filter_for_disease_in_txt()
 
     dataset.load_precomputed(model)
 
-    seed_everything(opt.seed)
-    if opt.batch_size > 8:
-        logger.info("Adjusting batch size to 8 - will go oom otherwise")
-        opt.batch_size = 8
-
-    start_code = torch.randn([opt.batch_size, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
-
+    seed_everything(config.seed)
     precision_scope = autocast
 
     # visualization args
@@ -180,29 +174,28 @@ def main(opt):
     cond_key = "label_text"
     if is_mlf:
         rali = "first" if is_rali else None
-        tokenizer = OpenClipDummyTokenizer(opt.seed, opt.mlf_args.get("append_invariance_tokens", False), opt.mlf_args.get("single_healthy_class_token", False), rali=rali,)
+        tokenizer = OpenClipDummyTokenizer(config.seed, config.mlf_args.get("append_invariance_tokens", False), config.mlf_args.get("single_healthy_class_token", False), rali=rali, )
         model.cond_stage_model.set_multi_label_tokenizer(tokenizer)
         cond_key = "finding_labels"
     elif is_rali:
-        tokenizer = OpenClipDummyTokenizer(opt.seed, False, True, rali=is_rali)
+        tokenizer = OpenClipDummyTokenizer(config.seed, False, True, rali=is_rali)
         model.cond_stage_model.set_multi_label_tokenizer(tokenizer)
         cond_key = "impression"
 
     logger.info(f"Relative path to first sample: {dataset[0]['rel_path']}")
 
     dataloader = DataLoader(dataset,
-                            batch_size=opt.batch_size,
+                            batch_size=config.sample.iou_batch_size,
                             shuffle=False,
-                            num_workers=0,#opt.num_workers,
+                            num_workers=0,  #opt.num_workers,
                             collate_fn=collate_batch,
                             drop_last=False,
                             )
 
-
-    if hasattr(opt, "mask_dir"):
-        mask_dir = opt.mask_dir
+    if hasattr(config, "mask_dir"):
+        mask_dir = config.mask_dir
     else:
-        mask_dir = os.path.join(opt.log_dir, "preliminary_masks")
+        mask_dir = os.path.join(config.log_dir, "preliminary_masks")
     logger.info(f"Mask dir: {mask_dir}")
 
     logger.info(f"Starting to generate masks with is_rali:{is_rali} and is_mlf:{is_mlf}")
@@ -273,7 +266,7 @@ def main(opt):
     resize_to_latent_size = torchvision.transforms.Resize(64)
 
     dataset.add_preliminary_masks(mask_dir, sanity_check=False)
-    mask_suggestor = GMMMaskSuggestor(opt)
+    mask_suggestor = GMMMaskSuggestor(config)
     log_some = 20
     results = {"rel_path":[], "finding_labels":[], "iou":[], "miou":[], "bboxiou":[], "bboxmiou":[], "distance":[], "top1":[], "aucroc": [], "cnr":[]}
 
@@ -342,7 +335,7 @@ def main(opt):
             results["aucroc"].append(auc)
 
             if log_some > 0:
-                logger.info(f"Logging example bboxes and attention maps to {opt.log_dir}")
+                logger.info(f"Logging example bboxes and attention maps to {config.log_dir}")
                 img = (sample["img_raw"] + 1) / 2
 
                 ground_truth_img = repeat(ground_truth_img, "h w -> 3 h w")
@@ -367,7 +360,7 @@ def main(opt):
                         ax.scatter(argmax_idx[1], argmax_idx[0], s=100, c='red', marker='o')
                     ax.axis('off')
 
-                path = os.path.join(opt.log_dir, "localization_examples", os.path.basename(sample["rel_path"]).rstrip(".png") + f"_{sample['finding_labels']}")
+                path = os.path.join(config.log_dir, "localization_examples", os.path.basename(sample["rel_path"]).rstrip(".png") + f"_{sample['finding_labels']}")
                 os.makedirs(path)
                 logger.info(f"Logging to {path}")
                 plt.savefig(path + "_raw.png", bbox_inches="tight")
@@ -392,27 +385,21 @@ def main(opt):
         json.dump(json_results, file, indent=4)
 
 
+def get_args():
+    parser = argparse.ArgumentParser(description="")
+    parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
+    parser.add_argument("EXP_NAME", type=str, help="Path to Experiment results")
+    parser.add_argument("--ckpt", type=str, default="train")
+    parser.add_argument("--mask_dir", type=str, default=None,
+                        help="dir to save masks in. Default will be inside log dir and should be used!")
+    parser.add_argument("--filter_bad_impressions", action="store_true", default=False,
+                        help="If set, then we use shortned impressions from mscxr")
+    parser.add_argument("--phrase_grounding_mode", action="store_true", default=False,
+                        help="If set, then we use shortned impressions from mscxr")
+    return parser.parse_args()
+
+
 if __name__ == '__main__':
-    args = get_compute_mask_args()
-    log_dir = os.path.join(os.path.abspath("."), "log", args.EXP_NAME, datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S"))
-    os.makedirs(log_dir, exist_ok=True)
-    file_handler = logging.FileHandler(os.path.join(log_dir, 'console.log'))
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(log_formatter)
-    logger.addHandler(file_handler)
-    logger.debug("="*30 + f"Running {os.path.basename(__file__)}" + "="*30)
-    logger.debug(f"Logging to {log_dir}")
-
-    opt = make_exp_config(args.EXP_PATH)
-    for key, value in vars(args).items():
-        if value is not None:
-            setattr(opt, key, value)
-            logger.info(f"Overwriting exp file key {key} with: {value}")
-
-    # make log dir (same as the one for the console log)
-    log_dir = os.path.join(os.path.dirname(file_handler.baseFilename))
-    setattr(opt, "log_dir", log_dir)
-    logger.info(f"Log dir: {log_dir}")
-    logger.debug(f"Current file: {__file__}")
-    log_experiment(logger, args, opt.config_path)
-    main(opt)
+    args = get_args()
+    config = main_setup(args)
+    main(config)
