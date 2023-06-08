@@ -4,6 +4,12 @@ from importlib.machinery import SourceFileLoader
 import importlib
 import torch
 import numpy as np
+from log import logger, log_experiment
+from log import formatter as log_formatter
+import os
+import datetime
+import logging
+from log import logger
 from einops import rearrange
 from scipy import ndimage
 import torchvision
@@ -50,7 +56,6 @@ def get_sample_model_args():
     parser.add_argument("--use_mscxrlabels", action="store_true", default=False, help="")
     parser.add_argument("--N", type=int, default=None, help="")
     parser.add_argument("--label_list_path", type=str, default=None, help="")
-
     return parser.parse_args()
 
 def get_comput_fid_args():
@@ -245,3 +250,43 @@ def viz_array(x):
         #ndim == 2
         plt.imshow(x, cmap="Greys_r")
     plt.show()
+
+def main_setup(args, name=__file__):
+    config = make_exp_config(args.EXP_PATH).config
+    for key, value in vars(args).items():
+        if value is not None:
+            keys = key.split(".")
+            if len(keys) == 1:
+                key = keys
+                setattr(config, keys[0], value)
+            else:
+                # keys with more depth
+                cfg_key = config
+                for i in range(len(keys) - 1):
+                    cfg_key = getattr(cfg_key, keys[i])
+                setattr(cfg_key, keys[-1], value)
+            logger.info(f"Overwriting exp file key {key} with: {value}")
+
+    if not hasattr(config, "log_dir"):
+        setattr(config, "log_dir", os.path.join(os.path.abspath("."), "log", args.EXP_NAME, datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")))
+    else:
+        # /vol/ideadata/ed52egek/pycharm/privacy/log/score_sde/2023-04-13T21-35-52
+        config.EXP_NAME = config.log_dir.split("/")[-2] # overwrite exp name if log dir is defined
+
+    log_dir = config.log_dir
+    os.makedirs(log_dir, exist_ok=True)
+    file_handler = logging.FileHandler(os.path.join(log_dir, 'console.log'))
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(log_formatter)
+    logger.addHandler(file_handler)
+    logger.debug("="*30 + f"Running {os.path.basename(name)}" + "="*30)
+    logger.debug(f"Logging to {log_dir}")
+
+    # make log dir (same as the one for the console log)
+    log_dir = os.path.join(os.path.dirname(file_handler.baseFilename))
+    setattr(config, "log_dir", log_dir)
+    logger.info(f"Log dir: {log_dir}")
+    logger.debug(f"Current file: {__file__}")
+    logger.debug(f"config")
+    log_experiment(logger, args)
+    return config

@@ -1244,6 +1244,7 @@ class LatentDiffusion(DDPM):
                                            return_original_cond=True,
                                            bs=N,
                                            cond_key=kwargs.get("cond_key"))
+        c = c.to(z.device)
         N = min(x.shape[0], N)
         n_row = min(x.shape[0], n_row)
         log["inputs"] = x

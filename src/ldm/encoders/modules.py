@@ -149,8 +149,9 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
         model, _, _ = open_clip.create_model_and_transforms(arch, device=torch.device('cpu'), pretrained=version, cache_dir="./clip/")
         del model.visual
         self.model = model
-
         self.device = device
+        self.model.to(device)
+
         self.max_length = max_length
         self.layer = layer
         if self.layer == "last":
@@ -264,6 +265,7 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
         return z
 
     def encode_with_transformer(self, text, is_rali=False):
+        self.model = self.model.to(torch.cuda.current_device())
         x = self.model.token_embedding(text)  # [batch_size, n_ctx, d_model]
         if not self.multi_label_finetuning or is_rali:
             x = x + self.model.positional_embedding

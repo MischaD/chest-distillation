@@ -17,6 +17,7 @@ from PIL import Image
 from einops import rearrange
 from torchvision.utils import make_grid
 import torch
+import torch.multiprocessing as mp
 from torch import autocast
 from contextlib import contextmanager, nullcontext
 from src.datasets import get_dataset
@@ -48,6 +49,8 @@ from torch.utils.data import DataLoader
 import matplotlib.patches as patches
 from src.datasets.utils import path_to_tensor
 from src.ldm.encoders.modules import OpenClipDummyTokenizer
+from torch.utils.data.distributed import DistributedSampler
+import torch.distributed as dist
 
 
 def get_latent_slice(batch, opt):
@@ -121,15 +124,14 @@ def samples_to_path(mask_dir, samples, j):
     return path
 
 
-def main(config):
+def compute_masks(rank, config, world_size):
+    logger.info(f"Current rank: {rank}")
     if config.phrase_grounding_mode:
         config.datasets.test["phrase_grounding"] = True
     else:
         config.datasets.test["phrase_grounding"] = False
 
     dataset = get_dataset(config, "test")
-
-    logger.info(f"Length of dataset: {len(dataset)}")
 
     model_config = OmegaConf.load(f"{config.config_path}")
     model_config["model"]["params"]["use_ema"] = False
@@ -152,7 +154,7 @@ def main(config):
         model_config["model"]["params"]["cond_stage_config"]["params"]["rali"] = rali_mode
 
     model = load_model_from_config(model_config, f"{config.ckpt}")
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    device = torch.device(rank) if torch.cuda.is_available() else torch.device("cpu")
     model = model.to(device)
     if config.sample.plms:
         logger.info("Always using DDIM sampler due to empirically better results")
@@ -182,6 +184,7 @@ def main(config):
         model.cond_stage_model.set_multi_label_tokenizer(tokenizer)
         cond_key = "impression"
 
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False)
     logger.info(f"Relative path to first sample: {dataset[0]['rel_path']}")
 
     dataloader = DataLoader(dataset,
@@ -190,7 +193,9 @@ def main(config):
                             num_workers=0,  #opt.num_workers,
                             collate_fn=collate_batch,
                             drop_last=False,
+                            sampler=sampler,
                             )
+    model = model.to(rank)
 
     if hasattr(config, "mask_dir"):
         mask_dir = config.mask_dir
@@ -210,6 +215,7 @@ def main(config):
                     samples["label_text"] = [str(x.split("|")[0]) for x in samples["label_text"]]
                     samples["impression"] = samples["label_text"]
 
+                    model.cond_stage_model = model.cond_stage_model.to(model.device)
                     images = model.log_images(samples, N=len(samples["label_text"]), split="test", sample=False, inpaint=True,
                                                   plot_progressive_rows=False, plot_diffusion_rows=False,
                                                   use_ema_scope=False, cond_key=cond_key, mask=1.,
@@ -257,19 +263,64 @@ def main(config):
                         preliminary_attention_mask = torch.stack(tok_attentions).mean(dim=(0))
                         path = samples_to_path(mask_dir, samples, j)
                         os.makedirs(os.path.dirname(path), exist_ok=True)
-                        logger.info(f"Saving attention mask to {path}")
+                        logger.info(f"(rank({rank}): Saving attention mask to {path}")
                         torch.save(preliminary_attention_mask.to("cpu"), path)
 
+
+def compute_iou_score(config):
+    if config.phrase_grounding_mode:
+        config.datasets.test["phrase_grounding"] = True
+    else:
+        config.datasets.test["phrase_grounding"] = False
+
+    dataset = get_dataset(config, "test")
+
+    model_config = OmegaConf.load(f"{config.config_path}")
+    model_config["model"]["params"]["use_ema"] = False
+    model_config["model"]["params"]["unet_config"]["params"]["attention_save_mode"] = "cross"
+    logger.info(f"Enabling attention save mode")
+
+    is_mlf = False
+    if hasattr(config, "mlf_args"):
+        is_mlf = config.mlf_args.get("multi_label_finetuning", False)
+        logger.info(f"Overwriting default arguments of config with {config.mlf_args}")
+        model_config["model"]["params"]["attention_regularization"] = config.mlf_args.get("attention_regularization")
+        model_config["model"]["params"]["cond_stage_key"] = config.mlf_args.get("cond_stage_key")
+        model_config["model"]["params"]["cond_stage_config"]["params"]["multi_label_finetuning"] = config.mlf_args.get("multi_label_finetuning")
+
+    is_rali = False
+    if hasattr(config, "mlf_args") and config.mlf_args.get("rali") is not None:
+        rali_mode = config.mlf_args["rali"]
+        is_rali = True
+        model_config["model"]["params"]["rali"] = True
+        model_config["model"]["params"]["cond_stage_config"]["params"]["rali"] = rali_mode
+
+    model = load_model_from_config(model_config, f"{config.ckpt}")
+    dataset.load_precomputed(model)
+    dataloader = DataLoader(dataset,
+                            batch_size=config.sample.iou_batch_size,
+                            shuffle=False,
+                            num_workers=0,  #opt.num_workers,
+                            collate_fn=collate_batch,
+                            drop_last=False,
+                            )
+
+    seed_everything(config.seed)
+
+    if hasattr(config, "mask_dir"):
+        mask_dir = config.mask_dir
+    else:
+        mask_dir = os.path.join(config.log_dir, "preliminary_masks")
+    logger.info(f"Mask dir: {mask_dir}")
+
+    dataset.add_preliminary_masks(mask_dir, sanity_check=False)
+    mask_suggestor = GMMMaskSuggestor(config)
+    log_some = 1
+    results = {"rel_path":[], "finding_labels":[], "iou":[], "miou":[], "bboxiou":[], "bboxmiou":[], "distance":[], "top1":[], "aucroc": [], "cnr":[]}
 
     topil = torchvision.transforms.ToPILImage()
     resize_to_imag_size = torchvision.transforms.Resize(512)
     resize_to_latent_size = torchvision.transforms.Resize(64)
-
-    dataset.add_preliminary_masks(mask_dir, sanity_check=False)
-    mask_suggestor = GMMMaskSuggestor(config)
-    log_some = 20
-    results = {"rel_path":[], "finding_labels":[], "iou":[], "miou":[], "bboxiou":[], "bboxmiou":[], "distance":[], "top1":[], "aucroc": [], "cnr":[]}
-
     for samples in tqdm(dataloader, "computing metrics"):
         #z, c, x, xrec = model.get_input(samples, "img", cond_key="label_text", bs=len(samples["rel_path"]),
         #                                    return_first_stage_outputs=True)
@@ -282,7 +333,6 @@ def main(config):
             bboxes = sample["bboxxywh"].split("|")
             bbox_meta = dataset.bbox_meta_data.loc[sample["dicom_id"]]
             img_size = [bbox_meta["image_width"], bbox_meta["image_height"]]
-            #bbox_img = torch.zeros(img_size)
             for i in range(len(bboxes)):
                 bbox = [int(box) for box in bboxes[i].split("-")]
                 bboxes[i] = bbox
@@ -370,7 +420,7 @@ def main(config):
 
     df = pd.DataFrame(results)
     logger.info(f"Saving file with results to { mask_dir}")
-    df.to_csv(os.path.join( mask_dir, "bbox_results.csv"))
+    df.to_csv(os.path.join(mask_dir, "bbox_results.csv"))
     mean_results = df.groupby("finding_labels").mean(numeric_only=True)
     mean_results.to_csv(os.path.join(mask_dir, "bbox_results_means.csv"))
     logger.info(df.mean())
@@ -383,7 +433,6 @@ def main(config):
             json_results[x] = dict(mean_results.loc[x])
 
         json.dump(json_results, file, indent=4)
-
 
 def get_args():
     parser = argparse.ArgumentParser(description="")
@@ -402,4 +451,13 @@ def get_args():
 if __name__ == '__main__':
     args = get_args()
     config = main_setup(args)
-    main(config)
+    world_size = torch.cuda.device_count()
+
+    # mask computation
+    mp.spawn(
+        compute_masks,
+        args=(config, world_size),
+        nprocs=world_size
+    )
+
+    compute_iou_score(config)
