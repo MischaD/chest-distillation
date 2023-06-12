@@ -137,6 +137,9 @@ class MimicCXRDataset(FOBADataset):
     def __init__(self, dataset_args, opt):
         super().__init__(dataset_args, opt)
         self._meta_data = None
+        self._csv_file = "mimic_metadata_preprocessed.csv"
+        if dataset_args.get("dataset_csv") is not None:
+            self._csv_file = dataset_args.get("dataset_csv")
         self._build_dataset()
         self.opt = opt
         self._precomputed_path = None
@@ -246,7 +249,7 @@ class MimicCXRDataset(FOBADataset):
 
     @property
     def meta_data_path(self):
-        return os.path.join(self.base_dir, "mimic_metadata_preprocessed.csv")
+        return os.path.join(self.base_dir, self._csv_file)
 
     @property
     def meta_data(self):

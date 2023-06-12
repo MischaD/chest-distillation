@@ -76,6 +76,7 @@ def get_train_args():
     parser = argparse.ArgumentParser(description="Compute Masks")
     parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
     parser.add_argument("EXP_NAME", type=str, help="Path to Experiment results")
+    parser.add_argument("--save_to", type=str, default=None, help="Path to save final model to")
     return parser.parse_args()
 
 def get_train_segmentation_refined():
@@ -290,3 +291,31 @@ def main_setup(args, name=__file__):
     logger.debug(f"config")
     log_experiment(logger, args)
     return config
+
+
+def save_copy_checkpoint(src_path, tgt_path, log_logdir=None, log_wandb=None):
+    os.makedirs(os.path.dirname(tgt_path), exist_ok=True)
+    if not os.path.exists(tgt_path):
+        logger.info(f"Save best checkpoint to:{tgt_path}")
+        shutil.copy(src_path, tgt_path)
+    else:
+        out_dir = os.path.dirname(tgt_path)
+        extension = os.path.basename(tgt_path)
+        i = 1
+        while os.path.exists(os.path.join(out_dir, '{}_{}'.format(i, extension))):
+            i += 1
+        new_tgt_path = os.path.join(out_dir, '{}_{}'.format(i, extension))
+        logger.info(f"Best path {tgt_path} already exists")
+        logger.info(f"Copying old checkpoint to {new_tgt_path} as backup")
+        shutil.copy(tgt_path, new_tgt_path)
+        logger.info(f"Saving new checkpoint to {tgt_path}")
+        shutil.copy(src_path, tgt_path)
+
+    if log_logdir is not None:
+        # some debug information
+        base_path = os.path.dirname(tgt_path)
+        extension = os.path.basename(tgt_path)
+        with open(os.path.join(base_path, "." + extension + ".log"), "w", encoding="utf-8") as fp:
+            fp.write(f"{tgt_path} comes from {log_logdir}\n")
+            fp.write(f"wandb:{log_wandb}\n")
+

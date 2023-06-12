@@ -21,8 +21,8 @@ class FOBADataset(Dataset):
         self.base_dir = dataset_args["base_dir"]
         self.load_segmentations = False
         self.split = dataset_args["split"]
-        self.H = opt.H
-        self.W = opt.W
+        self.H = opt.datasets.H
+        self.W = opt.datasets.W
 
         self.preload_deprecated = dataset_args.get("preload", False)
         self.limit_dataset = dataset_args.get("limit_dataset", None)
@@ -117,7 +117,7 @@ class FOBADataset(Dataset):
         if self._preliminary_masks_path is not None:
             entry["preliminary_mask"] = torch.load(os.path.join(self._preliminary_masks_path, entry["rel_path"] + ".pt"))
             if not self.latent_attention_mask:
-                entry["preliminary_mask"] = repeat(entry["preliminary_mask"], "1 1 c h w -> 1 1 c (h h2) (w w2)", h2=self.opt.f, w2=self.opt.f)
+                entry["preliminary_mask"] = repeat(entry["preliminary_mask"], "1 1 c h w -> 1 1 c (h h2) (w w2)", h2=self.opt.datasets.f, w2=self.opt.datasets.f)
 
         if self._inpainted_images_path is not None:
             entry["inpainted_image"] = torch.load(os.path.join(self._inpainted_images_path, entry["rel_path"] + ".pt"))

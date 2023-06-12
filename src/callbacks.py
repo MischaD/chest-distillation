@@ -308,6 +308,7 @@ class CheckpointEveryNSteps(pl.Callback):
                 default filename, don't use ours.
         """
         self.save_step_frequency = save_step_frequency
+        self.last_ckpt = ""
 
     def on_train_batch_end(self, trainer: pl.Trainer, *args, **kwargs):
         """ Check if we should save a checkpoint after every train batch """
@@ -317,4 +318,5 @@ class CheckpointEveryNSteps(pl.Callback):
             filename = f"{global_step=}.ckpt"
             ckpt_path = os.path.join(trainer.checkpoint_callback.dirpath, filename)
             trainer.save_checkpoint(ckpt_path)
+            self.last_ckpt = ckpt_path
 

@@ -5,7 +5,7 @@ from utils import DatasetSplit
 
 
 config = ml_collections.ConfigDict()
-config.root = "/vol/ideadata/ed52egek"
+config.root = "/home/atuin/b143dc/b143dc11"
 config.data_dir = os.path.join(config.root, "data/mimic/jpg/physionet.org/files/mimic-cxr-jpg/2.0.0/") # data
 config.work_dir = os.path.join(config.root, "pycharm/chest-distillation") # code, config
 config.ckpt = os.path.join(config.root, "diffusionmodels/latentdiffusion/512-base-ema.ckpt")

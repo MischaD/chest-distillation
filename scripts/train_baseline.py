@@ -18,7 +18,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, Callback, LearningRateM
 from src.preliminary_masks import AttentionExtractor
 from src.datasets import get_dataset
 from src.callbacks import CUDACallback, SetupCallback, CheckpointEveryNSteps
-from utils import get_train_args, make_exp_config, load_model_from_config, collate_batch, img_to_viz, instantiate_from_config
+from utils import get_train_args, make_exp_config, load_model_from_config, collate_batch, img_to_viz, instantiate_from_config, main_setup
 from log import logger, log_experiment
 from log import formatter as log_formatter
 from tqdm import tqdm
@@ -37,6 +37,7 @@ def get_trainer_logger(log_dir, **kwargs):
             "save_dir": log_dir,
             "offline": False,
             "id": "__".join(log_dir.split("/")[-2:]),  # used for resuming
+            "tags": kwargs.pop("tags")
         }
     }
 
@@ -102,55 +103,55 @@ class MimicDataModule(pl.LightningDataModule):
                           shuffle=shuffle)
 
 
-def main(opt):
+def train(config):
     sys.path.append(os.getcwd())
+    config = config
+    ckptdir = os.path.join(config.log_dir, "checkpoints")
+    cfgdir = os.path.join(config.log_dir, "configs")
+    seed_everything(config.seed)
 
-    ckptdir = os.path.join(opt.log_dir, "checkpoints")
-    cfgdir = os.path.join(opt.log_dir, "configs")
-    seed_everything(opt.seed)
-
-    ckpt = opt.ckpt
+    ckpt = config.ckpt
 
     resume = False
     if os.path.isfile(os.path.join(ckptdir, "last.ckpt")):
         resume = True
         ckpt = os.path.join(ckptdir, "last.ckpt")
 
-    config = OmegaConf.load(f"{opt.config_path}")
-    lightning_config = config.pop("lightning", OmegaConf.create())
+    model_config = OmegaConf.load(f"{config.config_path}")
+    lightning_config = model_config.pop("lightning", OmegaConf.create())
 
-    if hasattr(opt, "cond_stage_trainable"):
-        config["model"]["params"]["cond_stage_trainable"] = opt.cond_stage_trainable
+    if hasattr(config, "cond_stage_trainable"):
+        model_config["model"]["params"]["cond_stage_trainable"] = config.cond_stage_trainable
 
     attention_regularzation = False
-    if hasattr(opt, "mlf_args"):
-        logger.info(f"Overwriting default arguments of config with {opt.mlf_args}")
-        attention_regularzation = opt.mlf_args.get("attention_regularization", False)
-        config["model"]["params"]["attention_regularization"] = attention_regularzation
-        config["model"]["params"]["cond_stage_key"] = opt.mlf_args.get("cond_stage_key")
-        config["model"]["params"]["cond_stage_config"]["params"]["multi_label_finetuning"] = opt.mlf_args.get("multi_label_finetuning")
+    if hasattr(config, "mlf_args"):
+        logger.info(f"Overwriting default arguments of config with {config.mlf_args}")
+        attention_regularzation = config.mlf_args.get("attention_regularization", False)
+        model_config["model"]["params"]["attention_regularization"] = attention_regularzation
+        model_config["model"]["params"]["cond_stage_key"] = config.mlf_args.get("cond_stage_key")
+        model_config["model"]["params"]["cond_stage_config"]["params"]["multi_label_finetuning"] = config.mlf_args.get("multi_label_finetuning")
 
     if attention_regularzation:
         logger.info("Applying Attention-Regularization!")
-        config["model"]["params"]["unet_config"]["params"]["attention_save_mode"] = "arm"
+        model_config["model"]["params"]["unet_config"]["params"]["attention_save_mode"] = "arm"
 
-    if hasattr(opt, "ucg_probability"):
-        logger.info(f"Overwriting default arguments of ucg probability with {opt.ucg_probability}")
-        config["model"]["params"]["ucg_probability"] = opt.ucg_probability
+    if hasattr(config.stable_diffusion, "ucg_probability"):
+        logger.info(f"Overwriting default arguments of ucg probability with {config.stable_diffusion.ucg_probability}")
+        model_config["model"]["params"]["ucg_probability"] = config.stable_diffusion.ucg_probability
 
-    if hasattr(opt, "mlf_args") and opt.mlf_args["rali"] is not None:
-        rali_mode = opt.mlf_args["rali"]# rali_mode used in tokenizer later
+    if hasattr(config, "mlf_args") and config.mlf_args["rali"] is not None:
+        rali_mode = config.mlf_args["rali"]# rali_mode used in tokenizer later
         logger.info(f"Activating Rali Mode: {rali_mode} - attention_regularization (bool): {attention_regularzation}")
-        config["model"]["params"]["rali"] = True
-        config["model"]["params"]["cond_stage_config"]["params"]["rali"] = rali_mode
+        model_config["model"]["params"]["rali"] = True
+        model_config["model"]["params"]["cond_stage_config"]["params"]["rali"] = rali_mode
     else:
-        config["model"]["params"]["rali"] = False
+        model_config["model"]["params"]["rali"] = False
 
-    config["model"]["base_learning_rate"] = opt.learning_rate
-    config["model"]["params"]["optimizer_type"] = opt.optimizer_type
-    logger.info(f"Setting learning rate to {opt.learning_rate} and optimizer to {opt.optimizer_type}")
+    model_config["model"]["base_learning_rate"] = config.stable_diffusion.learning_rate
+    model_config["model"]["params"]["optimizer_type"] = config.stable_diffusion.optimizer_type
+    logger.info(f"Setting learning rate to {config.stable_diffusion.learning_rate} and optimizer to {config.stable_diffusion.optimizer_type}")
 
-    model = load_model_from_config(config, f"{opt.ckpt}")
+    model = load_model_from_config(model_config, f"{config.ckpt}")
 
     if not ckpt == "":
         print(f"Attempting to load state from {ckpt}")
@@ -167,72 +168,78 @@ def main(opt):
             print(u)
 
     trainer_kwargs = {}
-    logger_cfg = get_trainer_logger(log_dir=opt.log_dir,
-                                    name=opt.EXP_NAME+os.path.basename(opt.log_dir),
-                                    #offline=opt.debug,
-                                    group="train_language_encoder"
+    logger_cfg = get_trainer_logger(log_dir=config.log_dir,
+                                    name=config.EXP_NAME + os.path.basename(config.log_dir),
+                                    group="train_language_encoder",
+                                    tags=["repeat_exp", f"trainable_{config.cond_stage_trainable}"],
                                     )
     trainer_kwargs["logger"] = instantiate_from_config(logger_cfg)
     modelckpt_cfg_default = get_model_checkpoint_config(ckptdir)
     checkpoint_callback = instantiate_from_config(modelckpt_cfg_default)
 
     setup_cb = SetupCallback(resume=resume,
-                  logdir=opt.log_dir,
-                  ckptdir=ckptdir,
-                  cfgdir=cfgdir,
-                  config=config,
-                  lightning_config=lightning_config,
-                  debug= opt.debug,
-                  enable_multinode_hacks=MULTINODE_HACKS,
-    )
+                             logdir=config.log_dir,
+                             ckptdir=ckptdir,
+                             cfgdir=cfgdir,
+                             config=model_config,
+                             debug=False,
+                             lightning_config=lightning_config,
+                             enable_multinode_hacks=MULTINODE_HACKS,
+                             )
     image_logger = instantiate_from_config(lightning_config["callbacks"]["image_logger"])
-    image_logger.set_attention_extractor(AttentionExtractor("all_token_mean", steps=int(opt.ddim_steps * 4/5), max_token=10))
+    image_logger.set_attention_extractor(AttentionExtractor("all_token_mean", steps=int(config.sample.ddim_steps * 4 / 5), max_token=10))
     learning_rate_logger = LearningRateMonitor(logging_interval="step")
 
     cuda_callback = CUDACallback()
-    step_checkpoint_callback = CheckpointEveryNSteps(save_step_frequency=opt.checkpoint_save_frequency)
+    step_checkpoint_callback = CheckpointEveryNSteps(save_step_frequency=config.trainer.checkpoint_save_frequency)
 
     trainer_kwargs["callbacks"] = [setup_cb, image_logger, learning_rate_logger, cuda_callback, checkpoint_callback, step_checkpoint_callback]
     trainer_kwargs["precision"] = 16
     trainer_kwargs["accelerator"] = "gpu"
     trainer_kwargs["strategy"] = "ddp" # trainer_config["strategy"]
-    trainer_kwargs["num_nodes"] = opt.num_nodes # trainer_config["strategy"]
+    trainer_kwargs["num_nodes"] = config.trainer.num_nodes # trainer_config["strategy"]
     trainer_kwargs["devices"] = torch.cuda.device_count()
-    trainer_kwargs["max_steps"] = opt.max_steps if hasattr(opt, "max_steps") else 60001
+    trainer_kwargs["max_steps"] = config.trainer.max_steps if hasattr(config.trainer, "max_steps") else 60001
     trainer_kwargs["num_sanity_val_steps"] = 0
     trainer = Trainer(**trainer_kwargs)
-    trainer.logdir = log_dir
+    trainer.logdir = config.log_dir
 
     # configure learning rate
-    bs, base_lr = opt.batch_size, config.model.base_learning_rate
+    bs, base_lr = config.dataloading.batch_size, model_config.model.base_learning_rate
     model.learning_rate = base_lr
     logger.info("++++ NOT USING LR SCALING ++++")
     logger.info(f"Setting learning rate to {model.learning_rate:.2e}")
 
-    train_dataset = get_dataset(opt, "train")
-    val_dataset = get_dataset(opt, "val")
+    train_dataset = get_dataset(config, "train")
+    val_dataset = get_dataset(config, "val")
 
     train_dataset.load_precomputed(model)
     val_dataset.load_precomputed(model)
 
     dataset = DataModuleFromConfig(
-        batch_size=opt.batch_size,
+        batch_size=config.dataloading.batch_size,
         train=train_dataset,
         validation=val_dataset,
-        num_workers=opt.num_workers,
+        num_workers=config.dataloading.num_workers,
         num_val_workers=0,
     )
 
-    if hasattr(opt, "mlf_args"):
-        tokenizer = OpenClipDummyTokenizer(opt.seed,
-                                           opt.mlf_args.get("append_invariance_tokens", False),
-                                           opt.mlf_args.get("single_healthy_class_token", False),
-                                           rali=opt.mlf_args.get("rali"),
-        )
+    if hasattr(config, "mlf_args"):
+        tokenizer = OpenClipDummyTokenizer(config.seed,
+                                           config.mlf_args.get("append_invariance_tokens", False),
+                                           config.mlf_args.get("single_healthy_class_token", False),
+                                           rali=config.mlf_args.get("rali"),
+                                           )
         model.cond_stage_model.set_multi_label_tokenizer(tokenizer)
+
+    seed_everything(time.time())
 
     logger.info(f"Length of train dataset: {len(train_dataset)}")
     trainer.fit(model, dataset)
+    if hasattr(config, "save_to") and config.save_to is not None:
+        from shutil import copy
+        copy(step_checkpoint_callback.last_ckpt, config.save_to)
+
 
 
 class DataModuleFromConfig(pl.LightningDataModule):
@@ -281,28 +288,16 @@ class DataModuleFromConfig(pl.LightningDataModule):
                           num_workers=self.num_workers, collate_fn=collate_batch)
 
 
+def get_args():
+    parser = argparse.ArgumentParser(description="Compute Masks")
+    parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
+    parser.add_argument("EXP_NAME", type=str, help="Path to Experiment results")
+    parser.add_argument("--cond_stage_trainable", action="store_true", default=False, help="Trainable or frozen language encoder")
+    parser.add_argument("--save_to", type=str, default=None, help="Path to save final model to")
+    return parser.parse_args()
+
+
 if __name__ == '__main__':
-    args = get_train_args()
-    log_dir = os.path.join(os.path.abspath("."), "log", args.EXP_NAME, datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S"))
-    os.makedirs(log_dir, exist_ok=True)
-    file_handler = logging.FileHandler(os.path.join(log_dir, 'console.log'))
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(log_formatter)
-    logger.addHandler(file_handler)
-    logger.debug("="*30 + f"Running {os.path.basename(__file__)}" + "="*30)
-    logger.debug(f"Logging to {log_dir}")
-
-    opt = make_exp_config(args.EXP_PATH)
-    for key, value in vars(args).items():
-        if value is not None:
-            setattr(opt, key, value)
-            logger.info(f"Overwriting exp file key {key} with: {value}")
-
-    # make log dir (same as the one for the console log)
-    log_dir = os.path.join(os.path.dirname(file_handler.baseFilename))
-    setattr(opt, "log_dir", log_dir)
-    logger.info(f"Log dir: {log_dir}")
-    logger.debug(f"Current file: {__file__}")
-    log_experiment(logger, args, opt.config_path)
-
-    main(opt)
+    args = get_args()
+    config = main_setup(args)
+    train(config)
