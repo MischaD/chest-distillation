@@ -25,8 +25,8 @@ config.datasets.f = 8
 config.datasets.train = ml_collections.ConfigDict()
 config.datasets.train.dataset = "chestxraymimic"
 config.datasets.train.base_dir = config.data_dir
-config.datasets.train.split = DatasetSplit("mscxr")
-config.datasets.train.limit_dataset = [0, 64]  # 6d79a86d53fe64e8ea8dca6e81be75b0edfd98c4
+config.datasets.train.split = DatasetSplit("train")
+#config.datasets.train.limit_dataset = [0, 64]  # 6d79a86d53fe64e8ea8dca6e81be75b0edfd98c4
 config.datasets.train.preload = True
 
 config.datasets.val = ml_collections.ConfigDict()
@@ -40,7 +40,7 @@ config.datasets.test = ml_collections.ConfigDict()
 config.datasets.test.dataset = "chestxraymimicbbox"
 config.datasets.test.base_dir = config.data_dir
 config.datasets.test.split = DatasetSplit("mscxr")
-config.datasets.test.limit_dataset=[0, 32]
+#config.datasets.test.limit_dataset=[0, 32]
 config.datasets.test.preload = True
 config.datasets.test.save_original_images = True
 
@@ -60,13 +60,13 @@ config.stable_diffusion.ucg_probability=0.3
 
 # dataloading
 config.dataloading = ml_collections.ConfigDict()
-config.dataloading.batch_size = 8
+config.dataloading.batch_size = 16
 config.dataloading.num_workers = 1
 
 # trainer
 config.trainer = ml_collections.ConfigDict()
-config.trainer.max_steps=11#just to make sure 60k is saved
-config.trainer.checkpoint_save_frequency=10
+config.trainer.max_steps=30001#just to make sure 60k is saved
+config.trainer.checkpoint_save_frequency=30000
 config.trainer.num_nodes=1
 config.trainer.precompute_latent_training_data=True
 
@@ -75,4 +75,4 @@ config.sample = ml_collections.ConfigDict()
 config.sample.n_synth_samples_per_class=625
 config.sample.ddim_steps=75
 config.sample.plms=True
-config.sample.iou_batch_size=16
+config.sample.iou_batch_size=8

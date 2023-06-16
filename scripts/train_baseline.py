@@ -170,7 +170,6 @@ def train(config):
     trainer_kwargs = {}
     logger_cfg = get_trainer_logger(log_dir=config.log_dir,
                                     name=config.EXP_NAME + os.path.basename(config.log_dir),
-                                    group="train_language_encoder",
                                     tags=["repeat_exp", f"trainable_{config.cond_stage_trainable}"],
                                     )
     trainer_kwargs["logger"] = instantiate_from_config(logger_cfg)
@@ -207,7 +206,6 @@ def train(config):
     # configure learning rate
     bs, base_lr = config.dataloading.batch_size, model_config.model.base_learning_rate
     model.learning_rate = base_lr
-    logger.info("++++ NOT USING LR SCALING ++++")
     logger.info(f"Setting learning rate to {model.learning_rate:.2e}")
 
     train_dataset = get_dataset(config, "train")

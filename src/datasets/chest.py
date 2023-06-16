@@ -292,9 +292,10 @@ class MimicCXRDataset(FOBADataset):
 class MimicCXRDatasetMSBBOX(MimicCXRDataset):
     def __init__(self, dataset_args, opt):
         self._bbox_meta_data = None
-        self._csv_name = "mimic_sccxr_preprocessed.csv"
+        self._csv_name = "mcxr_with_impressions.csv"
         assert dataset_args["split"] == DatasetSplit("mscxr")
         if dataset_args.get("phrase_grounding", False):
+            logger.info("Phrase grounding mode on in MSBBOX Dataset")
             self._csv_name = "mimi_scxr_phrase_grounding_preprocessed.csv"
 
         super().__init__(dataset_args, opt)

@@ -319,3 +319,13 @@ def save_copy_checkpoint(src_path, tgt_path, log_logdir=None, log_wandb=None):
             fp.write(f"{tgt_path} comes from {log_logdir}\n")
             fp.write(f"wandb:{log_wandb}\n")
 
+class AttributeDict(dict):
+    def __getattr__(self, name):
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError(f"'AttributeDict' object has no attribute '{name}'")
+
+    def __setattr__(self, name, value):
+        self[name] = value
+

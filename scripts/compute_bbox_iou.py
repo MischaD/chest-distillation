@@ -420,13 +420,13 @@ def compute_iou_score(config):
 
     df = pd.DataFrame(results)
     logger.info(f"Saving file with results to { mask_dir}")
-    df.to_csv(os.path.join(mask_dir, "bbox_results.csv"))
+    df.to_csv(os.path.join(mask_dir, f"pgm_{config.phrase_grounding_mode}_bbox_results.csv"))
     mean_results = df.groupby("finding_labels").mean(numeric_only=True)
-    mean_results.to_csv(os.path.join(mask_dir, "bbox_results_means.csv"))
+    mean_results.to_csv(os.path.join(mask_dir,  f"pgm_{config.phrase_grounding_mode}_bbox_results_means.csv"))
     logger.info(df.mean())
     logger.info(df.groupby("finding_labels").mean(numeric_only=True))
 
-    with open(os.path.join(mask_dir, "bbox_results.json"), "w") as file:
+    with open(os.path.join(mask_dir, f"pgm_{config.phrase_grounding_mode}_bbox_results.json"), "w") as file:
         json_results = {}
         json_results["all"] = dict(df.mean(numeric_only=True))
         for x in mean_results.index:

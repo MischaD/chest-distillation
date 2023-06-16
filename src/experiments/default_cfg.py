@@ -25,8 +25,8 @@ config.datasets.f = 8
 config.datasets.train = ml_collections.ConfigDict()
 config.datasets.train.dataset = "chestxraymimic"
 config.datasets.train.base_dir = config.data_dir
-config.datasets.train.split = DatasetSplit("mscxr")
-config.datasets.train.limit_dataset = [0, 64]  # 6d79a86d53fe64e8ea8dca6e81be75b0edfd98c4
+config.datasets.train.split = DatasetSplit("train")
+#config.datasets.train.limit_dataset = [0, 64]  # 6d79a86d53fe64e8ea8dca6e81be75b0edfd98c4
 config.datasets.train.preload = True
 
 config.datasets.val = ml_collections.ConfigDict()
@@ -75,4 +75,4 @@ config.sample = ml_collections.ConfigDict()
 config.sample.n_synth_samples_per_class=625
 config.sample.ddim_steps=75
 config.sample.plms=True
-config.sample.iou_batch_size=16
+config.sample.iou_batch_size=8
