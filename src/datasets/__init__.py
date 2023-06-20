@@ -1,13 +1,10 @@
-from .cars import CarDataset
-from .birds import BirdDataset
-from .human import HumanDataset
-from .dogs import DogDataset
 from .chest import ChestXray14Dataset, ChestXray14BboxDataset, MimicCXRDataset, MimicCXRDatasetMSBBOX
+from .mscoco import MSCOCODataset
 from copy import deepcopy
 
 
 def get_dataset(opt, split=None):
-    datasets = {"chestxray14": ChestXray14Dataset, "chestxray14bbox":ChestXray14BboxDataset, "chestxraymimic": MimicCXRDataset, "chestxraymimicbbox": MimicCXRDatasetMSBBOX}
+    datasets = {"chestxray14": ChestXray14Dataset, "chestxray14bbox":ChestXray14BboxDataset, "chestxraymimic": MimicCXRDataset, "chestxraymimicbbox": MimicCXRDatasetMSBBOX, "mscoco": MSCOCODataset}
     assert split is not None
     dataset_args = getattr(opt.datasets, f"{split}")
     getattr(opt, "dataset_args", dataset_args)

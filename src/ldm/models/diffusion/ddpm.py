@@ -455,7 +455,7 @@ class DDPM(pl.LightningModule):
                     batch[k][i] = val
 
 
-        for i, s in enumerate(batch["finding_labels"]):
+        for i, s in enumerate(batch[self.cond_stage_key]):
             if s == "No Finding":
                 if bool(torch.rand(1) < self.ucg_probability):
                     if self.rali:
@@ -819,6 +819,9 @@ class LatentDiffusion(DDPM):
                     else:
                         xc = [batch["impression"], batch["finding_labels"]]
 
+                elif cond_key in ["captions"]:
+                    xc = [random.choice(x.split("|")) for x in batch[cond_key]]
+                    batch[cond_key] = xc
                 elif cond_key in ["label_text"]:
                     assert isinstance(batch[cond_key], list)
                     xc = [random.choice(x.split("|")) for x in batch[cond_key]]

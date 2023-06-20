@@ -1,18 +1,17 @@
 #!/bin/bash -l
 #SBATCH --time=24:00:00
-#SBATCH --job-name=Baseline-Learnable-2
-#SBATCH --ntasks-per-node=8
-#SBATCH --nodes=2
+#SBATCH --job-name=TestLearnable1
+#SBATCH --nodes=1
 #SBATCH --partition=a100
-#SBATCH --qos=a100multi
 #SBATCH --gres=gpu:a100:8
 #SBATCH -C a100_80
 #SBATCH --export=NONE
 
-MODEL_NUM=2
+MODEL_NUM=1
 EXPERIMENT_NAME=statistical_learnable_$MODEL_NUM
 EXPERIMENT_FILE_PATH=src/experiments/default_cfg_hpc_learnable.py
 CKPT_PATH=/home/atuin/b143dc/b143dc11/diffusionmodels/chest/statistical/$EXPERIMENT_NAME.ckpt
+
 
 cd $WORK/pycharm/chest-distillation
 
@@ -25,4 +24,7 @@ module load cuda
 
 source activate chest
 
-srun python scripts/train_baseline.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --save_to=$CKPT_PATH --cond_stage_trainable
+python scripts/compute_bbox_iou.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --ckpt=$CKPT_PATH --phrase_grounding_mode
+python scripts/compute_bbox_iou.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --ckpt=$CKPT_PATH
+
+python scripts/sample_model.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --ckpt=$CKPT_PATH --label_list_path=$WORK/data/mimic/jpg/physionet.org/files/mimic-cxr-jpg/2.0.0/p19_5k_preprocessed_evenly.csv

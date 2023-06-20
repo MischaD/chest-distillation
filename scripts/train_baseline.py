@@ -147,6 +147,9 @@ def train(config):
     else:
         model_config["model"]["params"]["rali"] = False
 
+    if hasattr(config, "cond_stage_key"):
+        model_config["model"]["params"]["cond_stage_key"] = config.cond_stage_key
+
     model_config["model"]["base_learning_rate"] = config.stable_diffusion.learning_rate
     model_config["model"]["params"]["optimizer_type"] = config.stable_diffusion.optimizer_type
     logger.info(f"Setting learning rate to {config.stable_diffusion.learning_rate} and optimizer to {config.stable_diffusion.optimizer_type}")
