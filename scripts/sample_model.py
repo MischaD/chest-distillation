@@ -27,6 +27,52 @@ from einops import rearrange
 from src.datasets.sample_dataset import get_mscxr_synth_dataset, get_mscxr_synth_dataset_size_n
 from src.ldm.encoders.modules import OpenClipDummyTokenizer
 from utils import main_setup
+from src.datasets.mscoco import get_classes_for_caption
+
+
+def load_datalist(config, model):
+    if config.data_dir.endswith("mscoco"):
+        dataset = get_dataset(config, "test_sample")
+        dataset.load_precomputed(model)
+        ds = []
+        labels = []
+        for i in range(len(dataset)):
+            caption = dataset[i]["captions"].split("|")[0]
+            classes = get_classes_for_caption(caption)
+
+            ds.append(caption)
+            labels.append("_".join(classes))
+
+        synth_dataset = [{"labels": {k: v}} for k, v in zip(labels, ds)]
+        if hasattr(config, "N") and config.N is not None:
+            synth_dataset = synth_dataset[:config.N]
+            labels = labels[:config.N]
+    else:
+        if hasattr(config, "label_list_path"):
+            df = pd.read_csv(config.label_list_path)
+            synth_dataset = [{"labels":{k: v}} for k, v in zip(list(df["Finding Labels"]), list(df["impression"]))]
+            labels = set(df["Finding Labels"].unique())
+            if hasattr(config, "N") and config.N is not None:
+                synth_dataset = synth_dataset[:config.N]
+        else:
+            if config.use_mscxrlabels:
+                dataset = get_dataset(config, "test")
+                dataset.load_precomputed(model)
+                if hasattr(config, "N") and config.N is not None:
+                    logger.info(f"Sampling {config.N} from dataset mscxr")
+                    synth_dataset, labels = get_mscxr_synth_dataset_size_n(config.N, dataset)
+                else:
+                    synth_dataset, labels = get_mscxr_synth_dataset(config, dataset)
+            else:
+                dataset = get_dataset(config, "testp19")
+                dataset.load_precomputed(model)
+                if hasattr(config, "N") and config.N is not None:
+                    logger.info(f"Sampling {config.N} from dataset p19")
+                    synth_dataset, labels = get_mscxr_synth_dataset_size_n(config.N, dataset, finding_key="impression",
+                                                                           label_key="finding_labels")
+                else:
+                    synth_dataset, labels = get_mscxr_synth_dataset(config, dataset, finding_key="impression", label_key="finding_labels")
+    return synth_dataset, labels
 
 
 def sample_model(rank, config, world_size):
@@ -58,30 +104,7 @@ def sample_model(rank, config, world_size):
     model = model.to(device)
     seed_everything(config.seed)
 
-    if hasattr(config, "label_list_path"):
-        df = pd.read_csv(config.label_list_path)
-        synth_dataset = [{"labels":{k: v}} for k, v in zip(list(df["Finding Labels"]), list(df["impression"]))]
-        labels = set(df["Finding Labels"].unique())
-        if hasattr(config, "N") and config.N is not None:
-            synth_dataset = synth_dataset[:config.N]
-    else:
-        if config.use_mscxrlabels:
-            dataset = get_dataset(config, "test")
-            dataset.load_precomputed(model)
-            if hasattr(config, "N") and config.N is not None:
-                logger.info(f"Sampling {config.N} from dataset mscxr")
-                synth_dataset, labels = get_mscxr_synth_dataset_size_n(config.N, dataset)
-            else:
-                synth_dataset, labels = get_mscxr_synth_dataset(config, dataset)
-        else:
-            dataset = get_dataset(config, "testp19")
-            dataset.load_precomputed(model)
-            if hasattr(config, "N") and config.N is not None:
-                logger.info(f"Sampling {config.N} from dataset p19")
-                synth_dataset, labels = get_mscxr_synth_dataset_size_n(config.N, dataset, finding_key="impression",
-                                                                       label_key="finding_labels")
-            else:
-                synth_dataset, labels = get_mscxr_synth_dataset(config, dataset, finding_key="impression", label_key="finding_labels")
+    synth_dataset, labels = load_datalist(config, model)
 
     if is_mlf:
         tokenizer = OpenClipDummyTokenizer(config.seed, config.mlf_args.get("append_invariance_tokens", False), config.mlf_args.get("single_healthy_class_token", False))
@@ -119,11 +142,11 @@ def sample_model(rank, config, world_size):
                             drop_last=False,
                             sampler=data_sampler,
                             )
-
+    log_first = True
     with torch.no_grad():
         with autocast("cuda"):
             with model.ema_scope():
-                for samples in tqdm(dataloader, desc="data"):
+                for samples in tqdm(dataloader, desc="Sampling", total=len(dataloader)):
                     uc = None
                     prompts = [list(x.values())[0] for x in samples["labels"]]
                     classes = [list(x.keys())[0] for x in samples["labels"]]
@@ -163,6 +186,21 @@ def sample_model(rank, config, world_size):
                         img_path = os.path.join(sample_path, f"{base_count:05}_{rank}.png")
                         logger.info(f"Saving sample to {img_path}")
                         Image.fromarray(sample.astype(np.uint8)).save(img_path)
+
+                    if log_first:
+                        log_first = False
+                        import matplotlib.pyplot as plt
+                        fig, axes = plt.subplots(nrows=2, ncols=int(len(output) // 2), figsize=(int(4 * len(output) // 2), 8))
+
+                        images = (255. * rearrange(output.to(torch.float32).clip(0,1).numpy(), 'b c h w -> b h w c')).astype(np.uint8)
+                        for i, (image, caption) in enumerate(zip(images, prompts)):
+                            axes.flat[i].imshow(image)
+                            axes.flat[i].axis('off')
+                            axes.flat[i].set_title(caption)
+
+                        # Adjust the spacing between subplots
+                        plt.tight_layout()
+                        plt.savefig(os.path.join(config.log_dir, f"{os.path.basename(config.ckpt)}_samples.pdf"))
 
 
 def get_args():

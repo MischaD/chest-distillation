@@ -44,6 +44,7 @@ config.datasets.test_sample.split = DatasetSplit("test")
 config.datasets.test_sample.limit_dataset = [0, 64]
 config.datasets.test_sample.preload = True
 
+
 # stable diffusion args
 config.stable_diffusion = ml_collections.ConfigDict()
 config.stable_diffusion.ddim_eta = 0.0 # 0 corresponds to deterministic sampling
@@ -59,7 +60,7 @@ config.dataloading.num_workers = 1
 
 # trainer
 config.trainer = ml_collections.ConfigDict()
-config.trainer.max_steps=100001#just to make sure 60k is saved
+config.trainer.max_steps=200001#just to make sure 60k is saved
 config.trainer.checkpoint_save_frequency=10000
 config.trainer.num_nodes=1
 config.trainer.precompute_latent_training_data=True

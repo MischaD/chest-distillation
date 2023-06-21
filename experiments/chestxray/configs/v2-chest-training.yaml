@@ -87,18 +87,18 @@ lightning:
     image_logger:
       target: src.callbacks.ImageLogger
       params:
-        disabled: True
+        disabled: False
         epoch_frequency: 1 #
-        max_images: 4
+        max_images: 8
         clamp: True
-        log_first_step: False
+        log_first_step: True
         log_images_kwargs:
           use_ema_scope: True
           inpaint: False
           cond_key: "label_text"
-          save_attention: True
+          save_attention: False
           plot_progressive_rows: False
           plot_diffusion_rows: False
           N: 4
-          unconditional_guidance_scale: 3.0
+          unconditional_guidance_scale: 4.0
           unconditional_guidance_label: [""]

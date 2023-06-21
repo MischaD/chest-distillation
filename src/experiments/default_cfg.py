@@ -26,7 +26,7 @@ config.datasets.train = ml_collections.ConfigDict()
 config.datasets.train.dataset = "chestxraymimic"
 config.datasets.train.base_dir = config.data_dir
 config.datasets.train.split = DatasetSplit("train")
-#config.datasets.train.limit_dataset = [0, 64]  # 6d79a86d53fe64e8ea8dca6e81be75b0edfd98c4
+config.datasets.train.limit_dataset = [0, 64]  # 6d79a86d53fe64e8ea8dca6e81be75b0edfd98c4
 config.datasets.train.preload = True
 
 config.datasets.val = ml_collections.ConfigDict()

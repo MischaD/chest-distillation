@@ -188,8 +188,10 @@ def train(config):
                              lightning_config=lightning_config,
                              enable_multinode_hacks=MULTINODE_HACKS,
                              )
+
+    if hasattr(config, "cond_stage_key"):
+        lightning_config["callbacks"]["image_logger"]["params"]["log_images_kwargs"]["cond_key"] = config.cond_stage_key
     image_logger = instantiate_from_config(lightning_config["callbacks"]["image_logger"])
-    image_logger.set_attention_extractor(AttentionExtractor("all_token_mean", steps=int(config.sample.ddim_steps * 4 / 5), max_token=10))
     learning_rate_logger = LearningRateMonitor(logging_interval="step")
 
     cuda_callback = CUDACallback()

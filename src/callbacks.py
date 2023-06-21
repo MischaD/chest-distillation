@@ -20,6 +20,7 @@ from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.utilities import rank_zero_only, rank_zero_info
 from src.preliminary_masks import preprocess_attention_maps
 from src.visualization.utils import log_images_helper
+from src.ldm.models.diffusion.ddim import DDIMSampler
 from pytorch_lightning.loggers import WandbLogger
 
 
@@ -183,6 +184,43 @@ class ImageLogger(Callback):
             if is_train:
                 pl_module.train()
 
+    def log_image_caption(self, pl_module, batch, batch_idx, split="train"):
+        is_train = pl_module.training
+        if is_train:
+            pl_module.eval()
+
+        sampler = DDIMSampler(pl_module)
+
+        device = pl_module.model.device
+        prompts = [x.split("|")[0] for x in batch[pl_module.cond_stage_key]]
+
+        c = pl_module.get_learned_conditioning(prompts)
+        uc = pl_module.get_learned_conditioning(len(c) * [""])
+
+        sampling_shape = [len(c), 4, 64, 64]
+
+        start_code = torch.randn(tuple(sampling_shape), device=device)
+
+        with torch.no_grad():
+            with autocast("cuda"):
+                output, _ = sampler.sample(S=50,
+                                           conditioning=c.to(device),
+                                           batch_size=len(c),
+                                           shape=sampling_shape[1:],
+                                           verbose=False,
+                                           unconditional_guidance_scale=4.0,
+                                           unconditional_conditioning=uc.to(device),
+                                           x_T=start_code.to(device))
+
+        output = pl_module.decode_first_stage(output)
+        output = torch.clamp((output + 1.0) / 2.0, min=0.0, max=1.0)
+        output = output.cpu()
+        if isinstance(pl_module.logger, WandbLogger):
+            log_images_helper(pl_module.logger, {"images": output}, prefix="", drop_samples=False, caption="|".join(prompts))
+
+        if is_train:
+            pl_module.train()
+
     def log_attention(self, pl_module, batch, batch_idx, split="train"):
         loc_logger = type(pl_module.logger)
 
@@ -192,7 +230,19 @@ class ImageLogger(Callback):
 
         with torch.no_grad():
             with autocast("cuda"):
-                images = pl_module.log_images(batch, split=split, sample=False, inpaint=True, plot_progressive_rows=False, plot_diffusion_rows=False, use_ema_scope=False, cond_key="label_text", mask=1., save_attention=True)
+                prompts = [x.split("|")[0] for x in batch[pl_module.cond_stage_key]]
+                with torch.no_grad():
+                    with autocast("cuda"):
+                        images = pl_module.log_images(batch, N=len(batch[pl_module.cond_stage_key]), split="test",
+                                                  sample=False, inpaint=True,
+                                                  plot_progressive_rows=False, plot_diffusion_rows=False,
+                                                  use_ema_scope=False, cond_key=pl_module.cond_stage_key, mask=1.,
+                                                  save_attention=True)
+                        attention_maps = images.pop("attention")
+
+                        input = pl_module.decode_first_stage(images["input"])
+                        output = torch.clamp((input + 1.0) / 2.0, min=0.0, max=1.0)
+
                 images.pop("inputs")
                 attention = images.pop("attention")
                 attention_maps = []
@@ -261,8 +311,12 @@ class ImageLogger(Callback):
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
         if (trainer.current_epoch == 0 and self.log_first_step) or (trainer.current_epoch > 0 and trainer.current_epoch % self.epoch_frequency == 0):
             if not self.disabled:
-                logger.info("Start sampling with attention.")
-                self.log_attention(pl_module, batch, batch_idx, split="val") # logs attention maps if we condtion on data from validation set
+                if batch_idx == 0:
+                    logger.info("Start sampling for image generation")
+                    #self.log_image_caption(pl_module, batch, batch_idx, split="val")
+
+                    #logger.info("Start sampling with attention.")
+                    #self.log_attention(pl_module, batch, batch_idx, split="val") # logs attention maps if we condtion on data from validation set
 
 
 class CUDACallback(Callback):

@@ -32,6 +32,15 @@ def caption_contains_class_name(caption):
     return False
 
 
+def get_classes_for_caption(caption):
+    caption = caption.lower()
+    pos_cls = []
+    for cls in classes:
+        if cls in caption:
+            pos_cls.append(cls)
+    return pos_cls
+
+
 class MSCOCODataset(FOBADataset):
     def __init__(self, dataset_args, opt):
         super().__init__(dataset_args, opt)

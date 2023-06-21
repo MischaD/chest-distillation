@@ -462,6 +462,12 @@ class DDPM(pl.LightningModule):
                         batch["impression"][i] = ""
                     else:
                         batch[self.cond_stage_key][i] = ""
+            if self.cond_stage_key == "captions": # real world dataset
+                if bool(torch.rand(1) < self.ucg_probability):
+                    batch[self.cond_stage_key][i] = ""
+
+
+
 
         loss, loss_dict = self.shared_step(batch, cond_key=self.cond_stage_key)
 
@@ -481,7 +487,7 @@ class DDPM(pl.LightningModule):
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
         if batch.get("impression") is None:
-            batch["impression"] = batch["label_text"]
+            batch["impression"] = batch["label_text"] if batch.get("label_text") is not None else batch["captions"]
         self.shared_step(batch, cond_key=self.cond_stage_key)
         _, loss_dict_no_ema = self.shared_step(batch, cond_key=self.cond_stage_key)
         with self.ema_scope():
@@ -1293,7 +1299,8 @@ class LatentDiffusion(DDPM):
         if sample:
             # get denoise row
             with ema_scope("Sampling"):
-                samples, intermediates = self.sample_log(cond=c, batch_size=N, ddim=use_ddim,
+                uc = self.get_unconditional_conditioning(N, unconditional_guidance_label)
+                samples, intermediates = self.sample_log(cond=c, batch_size=N, ddim=use_ddim,  unconditional_guidance_scale=unconditional_guidance_scale, unconditional_conditioning=uc,
                                                          ddim_steps=ddim_steps, x0=z[:N], eta=ddim_eta, save_attention=save_attention)
                 # samples, z_denoise_row = self.sample(cond=c, batch_size=N, return_intermediates=True)
             x_samples = self.decode_first_stage(samples)
