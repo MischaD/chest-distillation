@@ -184,6 +184,8 @@ def compute_masks(rank, config, world_size):
         model.cond_stage_model.set_multi_label_tokenizer(tokenizer)
         cond_key = "impression"
 
+    
+
     data_sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False)
     logger.info(f"Relative path to first sample: {dataset[0]['rel_path']}")
 
