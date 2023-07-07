@@ -12,6 +12,10 @@ from random import shuffle
 from src.datasets.utils import file_to_list, resize, path_to_tensor
 from torchvision.transforms import Resize, CenterCrop, Compose
 from src.datasets.dataset import FOBADataset
+from PIL import Image
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
+from torchvision.transforms import ToTensor
 from einops import rearrange, repeat
 from log import logger
 import scipy.ndimage as ndimage
@@ -21,12 +25,12 @@ from time import time
 import pickle
 
 
-classes = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
+MSCOCO_CLASSES = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
 
 
 def caption_contains_class_name(caption):
     caption = caption.lower()
-    for cls in classes:
+    for cls in MSCOCO_CLASSES:
         if cls in caption:
             return True
     return False
@@ -35,7 +39,7 @@ def caption_contains_class_name(caption):
 def get_classes_for_caption(caption):
     caption = caption.lower()
     pos_cls = []
-    for cls in classes:
+    for cls in MSCOCO_CLASSES:
         if cls in caption:
             pos_cls.append(cls)
     return pos_cls
@@ -200,3 +204,85 @@ class MSCOCODataset(FOBADataset):
         entry["captions"] = entry["finding_labels"]
         #lebel_text is used
         return entry
+
+
+class MSCOCOBBoxDataset(MSCOCODataset):
+    def __init__(self, dataset_args, opt):
+        super().__init__(dataset_args, opt)
+
+
+class MultiCaptionDataset():
+    """Wrapper class around dataset to enable multicaption. Inheritance does not work!"""
+    def __init__(self, dataset):
+        self.dataset = dataset
+        self.indices = []
+        self.captions = []
+        self.query_classes = []
+        for i in range(len(self.dataset)):
+            entry = self.dataset[i]
+            captions = entry["captions"].split("|")
+            for caption in captions:
+                classes = get_classes_for_caption(caption)
+                if classes != []:
+                    self.indices.append(i)
+                    self.captions.append(str(caption))
+                    self.query_classes.append(classes)
+
+        annType = ['segm', 'bbox', 'keypoints']
+        annType = annType[0]
+        data_type = 'val2017' if self.dataset.split == DatasetSplit.test else "train2017"
+        prefix = 'person_keypoints' if annType == 'keypoints' else 'instances'
+        annFile = '%s/annotations/%s_%s.json' % (self.dataset.base_dir, prefix, data_type)
+        self.coco_meta = COCO(annFile)
+
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, item):
+        idx = self.indices[item]
+        entry_ds = self.dataset[idx]
+        entry = entry_ds.copy()
+        entry["captions"] = self.captions[item]
+        entry["finding_labels"] = self.query_classes[item]
+        entry["query_classes"] = self.query_classes[item]
+        return entry
+
+    def add_preliminary_masks(self, *args, **kwargs):
+        self.dataset.add_preliminary_masks(*args, **kwargs)
+
+    def get_gt_segmentation(self, sample, query_word):
+        #query_words = ["cat", "person", "truck"]
+        #query_word = query_words[2]
+        img_name = sample["img_name"] #000000212226
+        imgIds = self.coco_meta.getImgIds(imgIds=[int(img_name)])
+        annIds = self.coco_meta.getAnnIds(imgIds=imgIds, iscrowd=None)
+        anns = self.coco_meta.loadAnns(annIds)
+
+
+        # show image:
+        # img = coco.loadImgs(imgIds)[0]
+        # img_raw = io.imread(img['coco_url'])
+
+        seg = None
+        for i in range(len(anns)):
+            cat_id = anns[i]["category_id"]
+            cat = self.coco_meta.cats[cat_id]["name"].lower()
+            if cat == query_word:
+                if seg is None:
+                    seg = self.coco_meta.annToMask(anns[i])
+                else:
+                    seg += self.coco_meta.annToMask(anns[i])
+
+        if seg is None:
+            return None
+        seg = seg.clip(0, 1)
+
+        seg = torch.tensor(seg)
+        transforms = Compose([Resize(self.dataset.W), CenterCrop(self.dataset.W)])
+        gt_image = transforms(seg.unsqueeze(dim=0))
+        img = transforms(gt_image)
+        if img.max() == 0:
+            # cat out of bounds
+            return None
+        return img

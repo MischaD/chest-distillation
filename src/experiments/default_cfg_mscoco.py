@@ -41,8 +41,15 @@ config.datasets.test_sample = ml_collections.ConfigDict()
 config.datasets.test_sample.dataset = "mscoco"
 config.datasets.test_sample.base_dir = config.data_dir
 config.datasets.test_sample.split = DatasetSplit("test")
-config.datasets.test_sample.limit_dataset = [0, 64]
+#config.datasets.test_sample.limit_dataset = [0, 64]
 config.datasets.test_sample.preload = True
+
+config.datasets.test = ml_collections.ConfigDict() # test iou
+config.datasets.test.dataset = "mscocobbox"
+config.datasets.test.base_dir = config.data_dir
+config.datasets.test.split = DatasetSplit("test")
+#config.datasets.test.limit_dataset = [0, 100]
+config.datasets.test.preload = True
 
 
 # stable diffusion args
@@ -60,7 +67,7 @@ config.dataloading.num_workers = 1
 
 # trainer
 config.trainer = ml_collections.ConfigDict()
-config.trainer.max_steps=200001#just to make sure 60k is saved
+config.trainer.max_steps=150001#just to make sure 60k is saved
 config.trainer.checkpoint_save_frequency=10000
 config.trainer.num_nodes=1
 config.trainer.precompute_latent_training_data=True

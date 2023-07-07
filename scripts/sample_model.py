@@ -180,10 +180,10 @@ def sample_model(rank, config, world_size):
 
                     output = output.cpu()
                     for i in range(len(output)):
-                        sample_path = os.path.join(os.path.join(img_dir, classes[i]))
+                        sample_path = os.path.join(os.path.join(img_dir))
                         base_count = len(os.listdir(sample_path))
                         sample = 255. * rearrange(output[i].numpy(), 'c h w -> h w c')
-                        img_path = os.path.join(sample_path, f"{base_count:05}_{rank}.png")
+                        img_path = os.path.join(sample_path, f"{base_count:05}_{rank}_{prompts[i].strip().replace(' ', '_')}.png")
                         logger.info(f"Saving sample to {img_path}")
                         Image.fromarray(sample.astype(np.uint8)).save(img_path)
 

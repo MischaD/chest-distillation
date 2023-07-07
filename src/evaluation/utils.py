@@ -163,6 +163,16 @@ def check_mask_exists(mask_dir, samples):
     return True
 
 
+def check_mask_exists_multiquery(mask_dir, samples):
+    for i in range(len(samples["rel_path"])):
+        query_classes = samples["query_classes"][i]
+        for query_class in query_classes:
+            path = samples_to_path_multiquery(mask_dir, samples, i, query=query_class)
+            if not os.path.exists(path):
+                return False
+    return True
+
+
 def samples_to_path(mask_dir, samples, j):
     sample_path = samples["rel_path"][j]
     label = samples["finding_labels"][j]
@@ -174,7 +184,7 @@ def samples_to_path(mask_dir, samples, j):
 
 def samples_to_path_multiquery(mask_dir, samples, j, query=""):
     sample_path = samples["rel_path"][j]
-    label = samples["finding_labels"][j]
-    path = os.path.join(mask_dir, sample_path + label + query) + ".pt"
-    logger.info(f"StoPath: {path}")
+    captions = samples["captions"][j].replace(" ", "_")[:228]
+    path = os.path.join(mask_dir, sample_path + captions + query) + ".pt"
+    #logger.info(f"StoPath: {path}")
     return path
