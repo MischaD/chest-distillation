@@ -1,6 +1,7 @@
 import os
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 import torch
+import argparse
 import json
 from src.evaluation.inception import InceptionV3
 from src.evaluation.xrv_fid import calculate_fid_given_paths
@@ -14,6 +15,7 @@ from utils import make_exp_config
 from log import formatter as log_formatter
 import datetime
 import torchxrayvision as xrv
+from utils import get_compute_mask_args, make_exp_config, load_model_from_config, collate_batch, img_to_viz, main_setup
 
 
 IMAGE_EXTENSIONS = {'bmp', 'jpg', 'jpeg', 'pgm', 'png', 'ppm',
@@ -59,6 +61,8 @@ def main(opt):
     if hasattr(opt, "result_dir") and opt.result_dir is not None:
         with open(os.path.join(opt.result_dir, "fid_results.json"), "w") as file:
             results_file = {}
+            results_file["dataset_src"] = opt.path_src
+            results_file["dataset_tgt"] = opt.path_tgt
             for fid_model, fid_value in results.items():
                 results_file[fid_model] = {"FID": fid_value,
                                           "as_string": f"{fid_value:.1f}"
@@ -66,27 +70,22 @@ def main(opt):
             json.dump(results_file, file)
 
 
+def get_args():
+    parser = argparse.ArgumentParser(description="Compute FID of dataset")
+    parser.add_argument("EXP_PATH", type=str, help="Path to experiment file")
+    parser.add_argument("EXP_NAME", type=str, help="Path to Experiment results")
+    parser.add_argument("path_src", type=str, help="Path to first dataset")
+    parser.add_argument("path_tgt", type=str, help="Path to second dataset")
+    parser.add_argument('--batch-size', type=int, default=50,
+                        help='Batch size to use')
+    parser.add_argument('--num-workers', type=int, default=16,
+                        help=('Number of processes to use for data loading. '
+                              'Defaults to `min(8, num_cpus)`'))
+    parser.add_argument("--result_dir", type=str, default=None, help="dir to save results in.")
+    return parser.parse_args()
+
+
 if __name__ == '__main__':
-    args = get_comput_fid_args()
-    log_dir = os.path.join(os.path.abspath("."), "log", args.EXP_NAME, datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S"))
-    os.makedirs(log_dir, exist_ok=True)
-    file_handler = logging.FileHandler(os.path.join(log_dir, 'console.log'))
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(log_formatter)
-    logger.addHandler(file_handler)
-    logger.debug("="*30 + f"Running {os.path.basename(__file__)}" + "="*30)
-    logger.debug(f"Logging to {log_dir}")
-
-    opt = make_exp_config(args.EXP_PATH)
-    for key, value in vars(args).items():
-        if value is not None:
-            setattr(opt, key, value)
-            logger.info(f"Overwriting exp file key {key} with: {value}")
-
-    # make log dir (same as the one for the console log)
-    log_dir = os.path.join(os.path.dirname(file_handler.baseFilename))
-    setattr(opt, "log_dir", log_dir)
-    logger.info(f"Log dir: {log_dir}")
-    logger.debug(f"Current file: {__file__}")
-    log_experiment(logger, args, opt.config_path)
-    main(opt)
+    args = get_args()
+    config = main_setup(args)
+    main(config)

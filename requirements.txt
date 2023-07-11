@@ -16,3 +16,5 @@ invisible-watermark
 open_clip_torch
 notebook
 torchxrayvision
+pycocotools
+ml_collections

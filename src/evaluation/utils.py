@@ -176,7 +176,7 @@ def check_mask_exists_multiquery(mask_dir, samples):
 def samples_to_path(mask_dir, samples, j):
     sample_path = samples["rel_path"][j]
     label = samples["finding_labels"][j]
-    impr = samples["impression"][j].replace(" ", "_")
+    impr = samples["impression"][j].replace(" ", "_")[:100]
     path = os.path.join(mask_dir, sample_path + label + impr) + ".pt"
     logger.info(f"StoPath: {path}")
     return path

@@ -1,6 +1,6 @@
 #!/bin/bash -l
 #SBATCH --time=24:00:00
-#SBATCH --job-name=Baseline-Learnable-2
+#SBATCH --job-name=Baseline-Learnable-2-cont
 #SBATCH --ntasks-per-node=8
 #SBATCH --nodes=2
 #SBATCH --partition=a100

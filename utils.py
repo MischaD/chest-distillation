@@ -336,7 +336,7 @@ def update_matplotlib_font(fontsize=11, fontsize_ticks=8, tex=True):
     plt.rcParams.update(tex_fonts)
 
 
-def set_size(width, fraction=1, subplots=(1, 1)):
+def set_size(width, fraction=1, subplots=(1, 1), ratio= (5**.5 - 1) / 2):
     """Set figure dimensions to avoid scaling in LaTeX.
 
     Parameters
@@ -354,6 +354,10 @@ def set_size(width, fraction=1, subplots=(1, 1)):
     """
     if width == "MICCAI":
         width_pt = 347.12354
+    elif width == "AAAI":
+        width_pt = 505.89
+    elif width == "AAAISingleCol":
+        width_pt = 239.39438
     else:
         width_pt = width
 
@@ -364,12 +368,12 @@ def set_size(width, fraction=1, subplots=(1, 1)):
 
     # Golden ratio to set aesthetic figure height
     # https://disq.us/p/2940ij3
-    golden_ratio = (5**.5 - 1) / 2
+    ratio
 
     # Figure width in inches
     fig_width_in = fig_width_pt * inches_per_pt
     # Figure height in inches
-    fig_height_in = fig_width_in * golden_ratio * (subplots[0] / subplots[1])
+    fig_height_in = fig_width_in * ratio * (subplots[0] / subplots[1])
 
     return (fig_width_in, fig_height_in)
 

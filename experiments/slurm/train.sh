@@ -1,9 +1,9 @@
 #!/bin/bash -l
 #SBATCH --time=24:00:00
-#SBATCH --job-name=TrainStatistical2
+#SBATCH --job-name=TestFrozen2
 #SBATCH --nodes=1
 #SBATCH --partition=a100
-#SBATCH --gres=gpu:a100:8
+#SBATCH --gres=gpu:a100:4
 #SBATCH -C a100_80
 #SBATCH --export=NONE
 
@@ -23,10 +23,10 @@ module load cuda
 
 source activate chest
 
-python scripts/train_baseline.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --save_to=$CKPT_PATH
+#python scripts/train_baseline.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --save_to=$CKPT_PATH
 #python scripts/train_baseline.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --save_to=$CKPT_PATH --cond_stage_trainable
 
 python scripts/compute_bbox_iou.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --ckpt=$CKPT_PATH --phrase_grounding_mode
-python scripts/compute_bbox_iou.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --ckpt=$CKPT_PATH
+#python scripts/compute_bbox_iou.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --ckpt=$CKPT_PATH
 
 python scripts/sample_model.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --ckpt=$CKPT_PATH --label_list_path=$WORK/data/mimic/jpg/physionet.org/files/mimic-cxr-jpg/2.0.0/p19_5k_preprocessed_evenly.csv

@@ -118,7 +118,8 @@ def get_activations(files, model, batch_size=50, dims=2048, device='cpu',
                'Setting batch size to data size'))
         batch_size = len(files)
 
-    transform = torchvision.transforms.Compose([TF.Resize(512), TF.CenterCrop(512), TF.Resize(224)])
+    logger.info(f"Resizing and center cropping to 512x512 images")
+    transform = torchvision.transforms.Compose([TF.Resize(512), TF.CenterCrop(512)])
     if fid_model == "xrv":
         channels = 1
     else:
@@ -256,8 +257,8 @@ def compute_statistics_of_path(path, model, batch_size, dims, device,
         if path.endswith(".csv"):
             df = pd.read_csv(path)
             files = df["path"].to_list()
+            files = [os.path.join(os.path.dirname(path), file) for file in files]
         else:
-
             path = pathlib.Path(path)
             files = [file for ext in IMAGE_EXTENSIONS
                        for file in path.rglob('*.{}'.format(ext))]
