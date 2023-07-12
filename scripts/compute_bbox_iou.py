@@ -271,12 +271,20 @@ def compute_iou_score(config):
 
             ground_truth_img = sample["bbox_img"].float()
 
+            if torch.isnan(sample["preliminary_mask"]).any():
+                logger.warning(f"NaN in prediction: {sample['rel_path']} -- {samples_to_path(mask_dir, samples, i)}")
+                continue
+
             #reconstructed_large = xrec[i].clamp(-1, 1)
             #reconstructed_large = (reconstructed_large + 1)/2
             #reconstructed = resize_to_latent_size(reconstructed_large)
 
-            binary_mask = repeat(mask_suggestor(sample, key="preliminary_mask"), "h w -> 3 h w")
-            binary_mask_large = resize_to_imag_size(binary_mask.float()).round()
+            try:
+                binary_mask = repeat(mask_suggestor(sample, key="preliminary_mask"), "h w -> 3 h w")
+                binary_mask_large = resize_to_imag_size(binary_mask.float()).round()
+            except ValueError:
+                #649af982-e3af4e3a-75013d30-cdc71514-a34738fd
+                binary_mask = torch.zeros_like(ground_truth_img)
 
             prelim_mask = (sample["preliminary_mask"] - sample["preliminary_mask"].min())/(sample["preliminary_mask"].max() - sample["preliminary_mask"].min())
             prelim_mask_large = resize_to_imag_size(prelim_mask.unsqueeze(dim=0)).squeeze(dim=0)
