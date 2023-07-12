@@ -146,6 +146,8 @@ class MimicCXRDataset(FOBADataset):
         self._precomputed_path = None
         self._save_original_images = dataset_args.get("save_original_images", False)
         self.text_label_key = dataset_args.get("text_label_key", "impression")
+        if self.text_label_key == "chatgpt":
+            self.chatgpt_impressions = pd.read_csv(os.path.join(self.base_dir, "chatgptimpressions.csv"))
 
     @property
     def precomputed_path(self):
@@ -298,6 +300,20 @@ class MimicCXRDataset(FOBADataset):
             else:
                 finding_labels = ret["finding_labels"].split("|")
                 ret["impression"] = " ".join(random.sample(finding_labels, len(finding_labels)))
+        elif self.text_label_key == "chatgpt":
+            finding_labels = ret["finding_labels"]
+            if isinstance(finding_labels, float):
+                cls = "No Finding"
+            else:
+                finding_labels = finding_labels.split("|")
+                finding_labels = random.sample(finding_labels, len(finding_labels))
+                cls = ""
+                for i in range(len(finding_labels)):
+                    if finding_labels[i] in self.chatgpt_impressions.columns:
+                        cls = finding_labels[i]
+                if cls == "":
+                    cls = "No Finding"
+            ret["impression"] = self.chatgpt_impressions[cls].sample(1).iloc[0]
         return ret
 
 
