@@ -3,6 +3,7 @@ import random
 import torch
 import cv2
 import hashlib
+import random
 import numpy as np
 import xml.etree.ElementTree as ET
 import pandas as pd
@@ -144,6 +145,7 @@ class MimicCXRDataset(FOBADataset):
         self.opt = opt
         self._precomputed_path = None
         self._save_original_images = dataset_args.get("save_original_images", False)
+        self.text_label_key = dataset_args.get("text_label_key", "impression")
 
     @property
     def precomputed_path(self):
@@ -287,6 +289,16 @@ class MimicCXRDataset(FOBADataset):
         entry["img"] = self._load_image(img_path)
         entry["impression"] = self.meta_data.loc[entry["dicom_id"]]["impression"]
         return entry
+
+    def __getitem__(self, item):
+        ret = super().__getitem__(item)
+        if self.text_label_key == "finding_labels":
+            if isinstance(ret["finding_labels"], float):
+                ret["impression"] = ""
+            else:
+                finding_labels = ret["finding_labels"].split("|")
+                ret["impression"] = " ".join(random.sample(finding_labels, len(finding_labels)))
+        return ret
 
 
 class MimicCXRDatasetMSBBOX(MimicCXRDataset):

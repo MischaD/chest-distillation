@@ -160,6 +160,8 @@ def sample_model(rank, config, world_size):
                     if config.stable_diffusion.scale != 1.0:
                         if is_rali:
                             uc = model.get_learned_conditioning([len(c) * ["No Finding",], len(c) * [""]])
+                        elif config.datasets.train.text_label_key == "finding_labels":
+                            uc = model.get_learned_conditioning([len(c) *["No Finding", ]])
                         else:
                             uc = model.get_learned_conditioning(len(c) * [""])
 

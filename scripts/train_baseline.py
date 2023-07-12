@@ -244,7 +244,6 @@ def train(config):
         copy(step_checkpoint_callback.last_ckpt, config.save_to)
 
 
-
 class DataModuleFromConfig(pl.LightningDataModule):
     def __init__(self, batch_size, train=None, validation=None, test=None, predict=None,
                  wrap=False, num_workers=None, shuffle_test_loader=False,
