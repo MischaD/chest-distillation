@@ -1,33 +1,47 @@
-# Source Code for Pay Attention: Accuracy 
+# Source Code for Trade-offs in Fine-tuned Diffusion Models Between Accuracy and Interpretability 
+
+# Training
+
+Go to main directory (with ./src) and add the package to the python directory:
+
+    export PYTHONPATH=$PWD
+
+Train baseline model. Requieres a pre-trained [Stable diffusion v2 checkpoint](https://github.com/Stability-AI/stablediffusion)
+We use the 512x512 model for our experiments. 
+
+As a preliminary task you have to prepare a directory with the trainings dataset. The folder with the data has to contain a .csv list with the relative path to all files name train2017_meta.csv or mimic_metadata_preprocessed.csv
+Examples can be found in *./experiments/train2017_meta.csv*
+
+You need to set your own paths in src/experiments/default_cfg_mscoco.py: 
+
+    config.data_dir # path to .csv containing paths to images and their correspoingng text label
+    config.work_dir # path to this repo (where ./src is located)
+    config.ckpt # path to Stable diffusion v2 512x512 img geneation ema model
 
 
-## Execution
+Start the finetuning with: 
 
-Define path where you want to save the checkpoint: 
+    python scripts/train_baseline.py src/experiments/default_cfg_mscoco.py mscoco
 
-    CKPT_PATH=$WORK/mimic_frozen_finetuned.ckpt
+# Generative Results 
 
-Specify the path to the training dataset in `src/experiments/default_cfg.py`.
+To sample the model prepare csv file sample.csv 
 
-Start training of the frozen model (change to learnable by setting the *--cond_stage_trainable* flag):
+    python scripts/sample_model.py src/experiments/default_cfg.py sample_baseline --ckpt=path/to/finetuned/model.ckpt --N=10 --label_list_path=experiments/p19_test.csv 
 
-    python scripts/train_baseline.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --save_to=$CKPT_PATH
-
-Sample model: 
-
-    python scripts/sample_model.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --ckpt=$CKPT_PATH --label_list_path=$WORK/data/mimic/jpg/physionet.org/files/mimic-cxr-jpg/2.0.0/p19_5k_preprocessed_evenly.csv
-
-Compute zero shot segmentation bbox iou:
-
-    python scripts/compute_bbox_iou.py $EXPERIMENT_FILE_PATH $EXPERIMENT_NAME --ckpt=$CKPT_PATH --phrase_grounding_mode
+where experiments/p19_test.csv has the same structure as mimic_metadata_preprocessed.csv. 
 
 
+# Localization 
 
-## If you want to use our code or cite this project please use: 
+To reproduce localization results from Table 1 and Table 2 and Table 3 (requires MS_CXR_Local_Alignment_v1.0.0.csv from MS-CXR in data_dir):
 
-    @article{dombrowski2023pay,
-      title={Pay Attention: Accuracy Versus Interpretability Trade-off in Fine-tuned Diffusion Models},
-      author={Dombrowski, Mischa and Reynaud, Hadrien and M{\"u}ller, Johanna P and Baugh, Matthew and Kainz, Bernhard},
-      journal={arXiv preprint arXiv:2303.17908},
-      year={2023}
-    }
+## Mimic 
+
+    python scripts/compute_bbox_iou.py src/experiments/default_cfg.py mimic --ckpt=path/to/finetuned/ckpt.ckpt --filter_bad_impressions
+
+add "--filter_bad_impressions" to reproduce results from Table 7.
+
+## MS-COCO 
+
+    python scripts/compute_bbox_iou_multi_caption.py src/experiments/default_cfg_mscoco.py mscoco_singlegpu --ckpt=path/to/ckpt/512-base-ema.ckpt --phrase_grounding_mode --mask_dir=output/save/dir
