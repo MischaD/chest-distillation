@@ -40,7 +40,7 @@ config.datasets.test = ml_collections.ConfigDict()
 config.datasets.test.dataset = "chestxraymimicbbox"
 config.datasets.test.base_dir = config.data_dir
 config.datasets.test.split = DatasetSplit("mscxr")
-config.datasets.test.limit_dataset=[880, 900]
+#config.datasets.test.limit_dataset=[880, 900]
 config.datasets.test.preload = True
 config.datasets.test.save_original_images = True
 

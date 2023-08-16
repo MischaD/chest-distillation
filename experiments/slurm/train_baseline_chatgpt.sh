@@ -1,6 +1,6 @@
 #!/bin/bash -l
 #SBATCH --time=24:00:00
-#SBATCH --job-name=LabelsAsImpressionLearnableCont
+#SBATCH --job-name=ChatGPTAsImpressionLearnableCont
 #SBATCH --ntasks-per-node=8
 #SBATCH --nodes=2
 #SBATCH --partition=a100
@@ -10,10 +10,10 @@
 #SBATCH --export=NONE
 
 cd $WORK/pycharm/chest-distillation
-CKPT_PATH=/home/atuin/b143dc/b143dc11/diffusionmodels/chest/label_as_impression/learnable_60k.ckpt
-LOG_DIR=/home/atuin/b143dc/b143dc11/pycharm/chest-distillation/log/finding_labels_as_impression_learnable
-EXPERIMENT_FILE_PATH=src/experiments/label_only_training_cfg_learnable_hpc.py
-EXPERIMENT_NAME=finding_labels_as_impression_learnable
+CKPT_PATH=/home/atuin/b143dc/b143dc11/diffusionmodels/chest/chatgpt_as_impression/learnable_60k.ckpt
+LOG_DIR=/home/atuin/b143dc/b143dc11/pycharm/chest-distillation/log/chatgpt_as_impression_learnable
+EXPERIMENT_FILE_PATH=src/experiments/chatgpt_cfg_learnable_hpc.py
+EXPERIMENT_NAME=chatgpt_as_impression_learnable
 
 unset SLURM_EXPORT_ENV
 export http_proxy=http://proxy.rrze.uni-erlangen.de:80

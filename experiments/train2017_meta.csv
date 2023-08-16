@@ -1,0 +1,2 @@
+,path,segmentation_path,captions,captions_filtered,split
+0,train2017/image_of_a_dog.jpg,annotations/stuff_train2017_pixelmaps/image_of_a_dog.jpg.png, A dog playing with a cat|A Staffordshire Terrier playing, A dog playing with a cat,1

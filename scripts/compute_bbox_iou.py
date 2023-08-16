@@ -205,6 +205,11 @@ def compute_iou_score(config):
 
     dataset = get_dataset(config, "test")
 
+    if config.filter_bad_impressions:
+        if config.phrase_grounding_mode:
+            logger.warning("Filtering cannot be combined with phrase grounding")
+        dataset.apply_filter_for_disease_in_txt()
+
     model_config = OmegaConf.load(f"{config.config_path}")
     model_config["model"]["params"]["use_ema"] = False
     model_config["model"]["params"]["unet_config"]["params"]["attention_save_mode"] = "cross"
