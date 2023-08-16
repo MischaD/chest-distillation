@@ -5,6 +5,7 @@
 Go to main directory (with ./src) and add the package to the python directory:
 
     export PYTHONPATH=$PWD
+    pip install -e . 
 
 Train baseline model. Requieres a pre-trained [Stable diffusion v2 checkpoint](https://github.com/Stability-AI/stablediffusion)
 We use the 512x512 model for our experiments. 
