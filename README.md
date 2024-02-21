@@ -1,5 +1,7 @@
 # Source Code for Trade-offs in Fine-tuned Diffusion Models Between Accuracy and Interpretability 
 
+**UPDATE**: The paper got accepted as **oral** to AAAI as part of the Main Conference Safe, Robust, and Responsible AI (SRRAI) track 2024!
+
 # Training
 
 Go to main directory (with ./src) and add the package to the python directory:
