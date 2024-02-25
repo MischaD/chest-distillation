@@ -50,13 +50,13 @@ add "--filter_bad_impressions" to reproduce results from Table 7.
 
     python scripts/compute_bbox_iou_multi_caption.py src/experiments/default_cfg_mscoco.py mscoco_singlegpu --ckpt=path/to/ckpt/512-base-ema.ckpt --phrase_grounding_mode --mask_dir=output/save/dir
 
-## Refernce 
-
-@misc{dombrowski2023tradeoffs,
+## Reference 
+    
+    @misc{dombrowski2023tradeoffs,
       title={Trade-offs in Fine-tuned Diffusion Models Between Accuracy and Interpretability}, 
       author={Mischa Dombrowski and Hadrien Reynaud and Johanna P. Müller and Matthew Baugh and Bernhard Kainz},
       year={2023},
       eprint={2303.17908},
       archivePrefix={arXiv},
       primaryClass={cs.CV}
-}
+    }
