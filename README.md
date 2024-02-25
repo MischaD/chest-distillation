@@ -2,6 +2,7 @@
 
 **UPDATE**: The paper got accepted as **oral** to AAAI as part of the Main Conference Safe, Robust, and Responsible AI (SRRAI) track 2024!
 
+A preprint is available at: [https://arxiv.org/abs/2303.17908](https://arxiv.org/abs/2303.17908)
 # Training
 
 Go to main directory (with ./src) and add the package to the python directory:
@@ -48,3 +49,14 @@ add "--filter_bad_impressions" to reproduce results from Table 7.
 ## MS-COCO 
 
     python scripts/compute_bbox_iou_multi_caption.py src/experiments/default_cfg_mscoco.py mscoco_singlegpu --ckpt=path/to/ckpt/512-base-ema.ckpt --phrase_grounding_mode --mask_dir=output/save/dir
+
+## Refernce 
+
+@misc{dombrowski2023tradeoffs,
+      title={Trade-offs in Fine-tuned Diffusion Models Between Accuracy and Interpretability}, 
+      author={Mischa Dombrowski and Hadrien Reynaud and Johanna P. Müller and Matthew Baugh and Bernhard Kainz},
+      year={2023},
+      eprint={2303.17908},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV}
+}
