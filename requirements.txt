@@ -10,7 +10,7 @@ einops
 coloredlogs
 scikit-learn
 omegaconf
-transformers==4.19.2
+transformers>=4.48.0
 diffusers
 invisible-watermark
 open_clip_torch
